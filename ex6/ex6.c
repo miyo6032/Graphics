@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <math.h>
 //  OpenGL with prototypes for glext
 #define GL_GLEXT_PROTOTYPES
 #ifdef __APPLE__
@@ -34,6 +35,10 @@ char* text[] = {"","2D","3D constant Z","3D","4D"};  // Dimension display text
 double s  = 10;
 double b  = 2.6666;
 double r  = 28;
+
+int step = 50000;
+
+double zh=0;  //  Spin angle
 
 /*
  *  Convenience routine to output raster text
@@ -66,8 +71,6 @@ void display()
    //  Set view angle
    glRotated(ph,1,0,0);
    glRotated(th,0,1,0);
-   //  Draw 10 pixel yellow points
-   glColor3f(1,1,0);
    glPointSize(1);
    glBegin(GL_LINE_STRIP);
    /*
@@ -86,7 +89,7 @@ void display()
     *  Integrate 50,000 steps (50 time units with dt = 0.001)
     *  Explicit Euler integration
     */
-   for (i=0;i<50000;i++)
+   for (i=0; i<step; i++)
    {
       double dx = s*(y-x);
       double dy = x*(r-z)-y;
@@ -95,6 +98,12 @@ void display()
       y += dt*dy;
       z += dt*dz;
 
+      glColor3f(0.5, 0.5, 0.5);
+      if(i < zh)
+      {
+         glColor3f(1, 0, 0);
+      }
+      
       // W = 50 because otherwise the attractor is too big for the viewport
       glVertex4d(x, y, z, 50);
    }
@@ -192,6 +201,17 @@ void reshape(int width,int height)
    glLoadIdentity();
 }
 
+void idle()
+{
+   //  Get elapsed (wall) time in seconds
+   double t = glutGet(GLUT_ELAPSED_TIME)/1000.0;
+   //  Calculate progress along the line
+   int steps_per_second = 1000;
+   zh = fmod(steps_per_second * t, step);
+   //  Request display update
+   glutPostRedisplay();
+}
+
 /*
  *  Start up GLUT and tell it what to do
  */
@@ -213,6 +233,8 @@ int main(int argc,char* argv[])
    glutSpecialFunc(special);
    //  Tell GLUT to call "key" when a key is pressed
    glutKeyboardFunc(key);
+   // Idle function for time passage
+   glutIdleFunc(idle);
    //  Pass control to GLUT so it can interact with the user
    glutMainLoop();
    //  Return code
