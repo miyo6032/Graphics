@@ -27,7 +27,7 @@ endif
 .c.o:
 	gcc -c $(CFLG) $<
 .cpp.o:
-	g++ -c $(CFLG) $<
+	g++ -g -c $(CFLG) $<
 
 #  Link
 ex6:ex6.o

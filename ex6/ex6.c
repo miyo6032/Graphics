@@ -1,14 +1,15 @@
 /*
- *  Coordinates
+ *  Michael Yoshimura HW2
  *
- *  Display 2, 3 and 4 dimensional coordinates in 3D.
+ *  Display the lorenz attractor in various forms
  *
  *  Key bindings:
- *  1      2D coordinates
- *  2      2D coordinates with fixed Z value
- *  3      3D coordinates
- *  4      4D coordinates
- *  +/-    Increase/decrease z or w
+ *  s      Increase parameter S by 0.1
+ *  x      Decrease parameter S by 0.1
+ *  d      Increase parameter B by 0.1
+ *  c      Decrease parameter B by 0.1
+ *  f      Increase parameter R by 0.1
+ *  v      Decrease parameter R by 0.1
  *  arrows Change view angle
  *  0      Reset view angle
  *  ESC    Exit
@@ -71,8 +72,7 @@ void display()
    //  Set view angle
    glRotated(ph,1,0,0);
    glRotated(th,0,1,0);
-   glPointSize(1);
-   glBegin(GL_LINE_STRIP);
+   glPointSize(0.5);
    /*
    * Draw the points here
    */
@@ -89,6 +89,7 @@ void display()
     *  Integrate 50,000 steps (50 time units with dt = 0.001)
     *  Explicit Euler integration
     */
+   glBegin(GL_LINE_STRIP);
    for (i=0; i<step; i++)
    {
       double dx = s*(y-x);
@@ -107,8 +108,8 @@ void display()
       // W = 50 because otherwise the attractor is too big for the viewport
       glVertex4d(x, y, z, 50);
    }
-
    glEnd();
+
    //  Draw axes in white
    glColor3f(1,1,1);
    glBegin(GL_LINES);
@@ -147,10 +148,16 @@ void key(unsigned char ch,int x,int y)
       th = ph = 0;
    else if (ch == 's')
       s+=0.1;
-   else if (ch == 'b')
+   else if (ch == 'x')
+      s-=0.1;
+   else if (ch == 'd')
       b+=0.1;
-   else if (ch == 'r')
+   else if (ch == 'c')
+      b-=0.1;
+   else if (ch == 'f')
       r+=0.1;
+   else if (ch == 'v')
+      r-=0.1;
    //  Tell GLUT it is necessary to redisplay the scene
    glutPostRedisplay();
 }
@@ -224,7 +231,7 @@ int main(int argc,char* argv[])
    //  Request 500 x 500 pixel window
    glutInitWindowSize(500,500);
    //  Create the window
-   glutCreateWindow("Coordinates");
+   glutCreateWindow("Michael Yoshimura HW2");
    //  Tell GLUT to call "display" when the scene should be drawn
    glutDisplayFunc(display);
   //  Tell GLUT to call "reshape" when the window is resized
