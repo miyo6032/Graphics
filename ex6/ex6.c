@@ -10,6 +10,7 @@
  *  c      Decrease parameter B by 0.1
  *  f      Increase parameter R by 0.1
  *  v      Decrease parameter R by 0.1
+ *  m      Toggle mode
  *  arrows Change view angle
  *  0      Reset view angle
  *  ESC    Exit
@@ -30,16 +31,15 @@
 int th=0;       // Azimuth of view angle
 int ph=0;       // Elevation of view angle
 double dim=2;   // Dimension of orthogonal box
-char* text[] = {"","2D","3D constant Z","3D","4D"};  // Dimension display text
 
 /*  Lorenz Parameters  */
 double s  = 10;
 double b  = 2.6666;
 double r  = 28;
-
 int step = 50000;
 
-double zh=0;  //  Spin angle
+double animation_time=0;  // An animation counter
+int special_mode = 1; // Whether to show the curve normally, or with fun things
 
 /*
  *  Convenience routine to output raster text
@@ -72,7 +72,7 @@ void display()
    //  Set view angle
    glRotated(ph,1,0,0);
    glRotated(th,0,1,0);
-   glPointSize(0.5);
+   glPointSize(0.3);
    /*
    * Draw the points here
    */
@@ -99,14 +99,26 @@ void display()
       y += dt*dy;
       z += dt*dz;
 
-      glColor3f(0.5, 0.5, 0.5);
-      if(i < zh)
+      if(special_mode)
       {
-         glColor3f(1, 0, 0);
+         if(i < animation_time) // Draw the line only if the time step is greater, making animation
+         {
+            glColor3f(1, 0, 0);
+            glVertex4d(x, y, z, 50);
+         }
+         else if(i == animation_time)
+         {
+            glColor3f(1, 0, 0);
+            glVertex3d(-1, 1, 1); // Draw a line that seems to "draw" the lorenz curve
+         }
+      }
+      else
+      {
+         glColor3f(0.3, 0.3, 0.3);
+         glVertex4d(x, y, z, 50);
       }
       
       // W = 50 because otherwise the attractor is too big for the viewport
-      glVertex4d(x, y, z, 50);
    }
    glEnd();
 
@@ -129,7 +141,7 @@ void display()
    Print("Z");
    //  Display parameters
    glWindowPos2i(5,5);
-   Print("View Angle=%d,%d",th,ph);
+   Print("View Angle=%d,%d Mode=%d, Parameters[S=%f, B=%f R=%f]",th,ph,special_mode,s,b,r);
    //  Flush and swap
    glFlush();
    glutSwapBuffers();
@@ -158,6 +170,17 @@ void key(unsigned char ch,int x,int y)
       r+=0.1;
    else if (ch == 'v')
       r-=0.1;
+   else if (ch == 'm')
+   {
+      if(special_mode)
+      {
+         special_mode = 0;
+      }
+      else
+      {
+         special_mode = 1;
+      }
+   }
    //  Tell GLUT it is necessary to redisplay the scene
    glutPostRedisplay();
 }
@@ -214,7 +237,7 @@ void idle()
    double t = glutGet(GLUT_ELAPSED_TIME)/1000.0;
    //  Calculate progress along the line
    int steps_per_second = 1000;
-   zh = fmod(steps_per_second * t, step);
+   animation_time = fmod(steps_per_second * t, step);
    //  Request display update
    glutPostRedisplay();
 }
