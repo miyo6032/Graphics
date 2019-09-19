@@ -114,7 +114,7 @@ void display()
       }
       else
       {
-         glColor3f(0.3, 0.3, 0.3);
+         glColor3f(0.9, 0.8, 0.7);
          glVertex4d(x, y, z, 50);
       }
       

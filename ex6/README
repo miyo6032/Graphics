@@ -1,16 +1,19 @@
-ex6: Coordinates
-
-Willem A. (Vlakkies) Schreuder
+Michael Yoshimura
 CSCI4229/5229 Fall 2019
 
-Display 2, 3 and 4 dimensional coordinates in 3D.
+Displays an animation of a line drawing the lorenz attractor curve
+Nothing weird should happen when resizing or changing view angle
 
 Key bindings
-  1      2D coordinates
-  2      2D coordinates with fixed Z value
-  3      3D coordinates
-  4      4D coordinates
-  +/-    Increase/decrease z or w
+  s      Increase parameter S by 0.1
+  x      Decrease parameter S by 0.1
+  d      Increase parameter B by 0.1
+  c      Decrease parameter B by 0.1
+  f      Increase parameter R by 0.1
+  v      Decrease parameter R by 0.1
+  m      Toggle mode (0 for static rendering of curve, 1 for animation)
   arrows Change view angle
   0      Reset view angle
   ESC    Exit
+
+Time taken: ~ 5 hours
