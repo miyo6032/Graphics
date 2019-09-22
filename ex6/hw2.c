@@ -2,6 +2,7 @@
  *  Michael Yoshimura HW2
  *
  *  Display the lorenz attractor in various forms
+ *  Sourced from ex6
  *
  *  Key bindings:
  *  s      Increase parameter S by 0.1
