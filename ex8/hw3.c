@@ -120,54 +120,10 @@ static void Vertex(double th,double ph)
    glVertex3d(Sin(th)*Cos(ph) , Sin(ph) , Cos(th)*Cos(ph));
 }
 
-/*
- *  Draw a sphere (version 1)
- *     at (x,y,z)
- *     radius (r)
- */
-static void sphere1(double x,double y,double z,double r)
+static void Vertex2(double th,double ph, double r)
 {
-   const int d=15;
-   int th,ph;
-
-   //  Save transformation
-   glPushMatrix();
-   //  Offset and scale
-   glTranslated(x,y,z);
-   glScaled(r,r,r);
-
-   //  South pole cap
-   glBegin(GL_TRIANGLE_FAN);
-   Vertex(0,-90);
-   for (th=0;th<=360;th+=d)
-   {
-      Vertex(th,d-90);
-   }
-   glEnd();
-
-   //  Latitude bands
-   for (ph=d-90;ph<=90-2*d;ph+=d)
-   {
-      glBegin(GL_QUAD_STRIP);
-      for (th=0;th<=360;th+=d)
-      {
-         Vertex(th,ph);
-         Vertex(th,ph+d);
-      }
-      glEnd();
-   }
-
-   //  North pole cap
-   glBegin(GL_TRIANGLE_FAN);
-   Vertex(0,90);
-   for (th=0;th<=360;th+=d)
-   {
-      Vertex(th,90-d);
-   }
-   glEnd();
-
-   //  Undo transformations
-   glPopMatrix();
+   glColor3f(Cos(th)*Cos(th) , Sin(ph)*Sin(ph) , Sin(th)*Sin(th));
+   glVertex3d(Sin(th)*Cos(ph) * r , Sin(ph) * r, Cos(th)*Cos(ph) * r);
 }
 
 /*
@@ -184,7 +140,7 @@ static void sphere2(double x,double y,double z,double r)
    glPushMatrix();
    //  Offset and scale
    glTranslated(x,y,z);
-   glScaled(r,r,r);
+   glScaled(r, r, r);
 
    //  Latitude bands
    for (ph=-90;ph<90;ph+=d)
@@ -200,255 +156,6 @@ static void sphere2(double x,double y,double z,double r)
 
    //  Undo transformations
    glPopMatrix();
-}
-
-/*
- *  Draw a airplane shaped polygon at (x,y,z)
- */
-static void PolyPlane(int type,double x,double y,double z)
-{
-   //  Save transformation
-   glPushMatrix();
-   //  Offset
-   glTranslated(x,y,z);
-   //  Fuselage and wings
-   glColor3f(1,1,0); 
-   glBegin(type);
-   glVertex2f( 1.0, 0.0);
-   glVertex2f( 0.8, 0.1);
-   glVertex2f( 0.0, 0.1);
-   glVertex2f(-1.0, 0.5);
-   glVertex2f(-1.0,-0.5);
-   glVertex2f( 0.0,-0.1);
-   glVertex2f( 0.8,-0.1);
-   glEnd();
-   //  Vertical tail
-   glColor3f(1,0,0);
-   glBegin(type);
-   glVertex3f(-1.0, 0.0,0.0);
-   glVertex3f(-1.0, 0.0,0.5);
-   glVertex3f(-0.5, 0.0,0.0);
-   glEnd();
-   //  Undo transformations
-   glPopMatrix();
-}
-
-/*
- *  Draw a flat airplane at (x,y,z)
- */
-static void FlatPlane(double x,double y,double z)
-{
-   //  Save transformation
-   glPushMatrix();
-   //  Offset
-   glRotated(-90,1,0,0);
-   glTranslated(x,y,z);
-   //  Fuselage
-   glColor3f(0,0,1);
-   glBegin(GL_POLYGON);
-   glVertex2f( 1.0, 0.0);
-   glVertex2f( 0.8, 0.1);
-   glVertex2f(-1.0, 0.1);
-   glVertex2f(-1.0,-0.1);
-   glVertex2f( 0.8,-0.1);
-   glEnd();
-   //  Wings
-   glColor3f(1,1,0);
-   glBegin(GL_TRIANGLES);
-   //  Starboard
-   glVertex2f( 0.0, 0.1);
-   glVertex2f(-1.0, 0.1);
-   glVertex2f(-1.0, 0.5);
-   //  Port
-   glVertex2f( 0.0,-0.1);
-   glVertex2f(-1.0,-0.1);
-   glVertex2f(-1.0,-0.5);
-   glEnd();
-   //  Vertical tail
-   glColor3f(1,0,0);
-   glBegin(GL_TRIANGLES);
-   glVertex3f(-1.0, 0.0,0.0);
-   glVertex3f(-1.0, 0.0,0.5);
-   glVertex3f(-0.5, 0.0,0.0);
-   glEnd();
-   //  Undo transformations
-   glPopMatrix();
-}
-
-/*
- *  Draw solid airplane
- *    at (x,y,z)
- *    nose towards (dx,dy,dz)
- *    up towards (ux,uy,uz)
- */
-static void SolidPlane(double x,double y,double z,
-                       double dx,double dy,double dz,
-                       double ux,double uy, double uz)
-{
-   // Dimensions used to size airplane
-   const double wid=0.05;
-   const double nose=+0.50;
-   const double cone= 0.20;
-   const double wing= 0.00;
-   const double strk=-0.20;
-   const double tail=-0.50;
-   //  Unit vector in direction of flght
-   double D0 = sqrt(dx*dx+dy*dy+dz*dz);
-   double X0 = dx/D0;
-   double Y0 = dy/D0;
-   double Z0 = dz/D0;
-   //  Unit vector in "up" direction
-   double D1 = sqrt(ux*ux+uy*uy+uz*uz);
-   double X1 = ux/D1;
-   double Y1 = uy/D1;
-   double Z1 = uz/D1;
-   //  Cross product gives the third vector
-   double X2 = Y0*Z1-Y1*Z0;
-   double Y2 = Z0*X1-Z1*X0;
-   double Z2 = X0*Y1-X1*Y0;
-   //  Rotation matrix
-   double mat[16];
-   mat[0] = X0;   mat[4] = X1;   mat[ 8] = X2;   mat[12] = 0;
-   mat[1] = Y0;   mat[5] = Y1;   mat[ 9] = Y2;   mat[13] = 0;
-   mat[2] = Z0;   mat[6] = Z1;   mat[10] = Z2;   mat[14] = 0;
-   mat[3] =  0;   mat[7] =  0;   mat[11] =  0;   mat[15] = 1;
-
-   //  Save current transforms
-   glPushMatrix();
-   //  Offset, scale and rotate
-   glTranslated(x,y,z);
-   glMultMatrixd(mat);
-   //  Nose (4 sided)
-   glColor3f(0,0,1);
-   glBegin(GL_TRIANGLES);
-   glVertex3d(nose, 0.0, 0.0);
-   glVertex3d(cone, wid, wid);
-   glVertex3d(cone,-wid, wid);
-
-   glVertex3d(nose, 0.0, 0.0);
-   glVertex3d(cone, wid,-wid);
-   glVertex3d(cone,-wid,-wid);
-
-   glVertex3d(nose, 0.0, 0.0);
-   glVertex3d(cone, wid, wid);
-   glVertex3d(cone, wid,-wid);
-
-   glVertex3d(nose, 0.0, 0.0);
-   glVertex3d(cone,-wid, wid);
-   glVertex3d(cone,-wid,-wid);
-   glEnd();
-   //  Fuselage (square tube)
-   glBegin(GL_QUADS);
-   glVertex3d(cone, wid, wid);
-   glVertex3d(cone,-wid, wid);
-   glVertex3d(tail,-wid, wid);
-   glVertex3d(tail, wid, wid);
-
-   glVertex3d(cone, wid,-wid);
-   glVertex3d(cone,-wid,-wid);
-   glVertex3d(tail,-wid,-wid);
-   glVertex3d(tail, wid,-wid);
-
-   glVertex3d(cone, wid, wid);
-   glVertex3d(cone, wid,-wid);
-   glVertex3d(tail, wid,-wid);
-   glVertex3d(tail, wid, wid);
-
-   glVertex3d(cone,-wid, wid);
-   glVertex3d(cone,-wid,-wid);
-   glVertex3d(tail,-wid,-wid);
-   glVertex3d(tail,-wid, wid);
-
-   glVertex3d(tail,-wid, wid);
-   glVertex3d(tail, wid, wid);
-   glVertex3d(tail, wid,-wid);
-   glVertex3d(tail,-wid,-wid);
-   glEnd();
-   //  Wings (plane triangles)
-   glColor3f(1,1,0);
-   glBegin(GL_TRIANGLES);
-   glVertex3d(wing, 0.0, wid);
-   glVertex3d(tail, 0.0, wid);
-   glVertex3d(tail, 0.0, 0.5);
-
-   glVertex3d(wing, 0.0,-wid);
-   glVertex3d(tail, 0.0,-wid);
-   glVertex3d(tail, 0.0,-0.5);
-   glEnd();
-   //  Vertical tail (plane triangle)
-   glColor3f(1,0,0);
-   glBegin(GL_POLYGON);
-   glVertex3d(strk, 0.0, 0.0);
-   glVertex3d(tail, 0.3, 0.0);
-   glVertex3d(tail, 0.0, 0.0);
-   glEnd();
-   //  Undo transformations
-   glPopMatrix();
-}
-
-
-/*
- *  Draw icosahedron
- *     size  s
- */
-static void icosahedron(float s)
-{
-   //  Vertex index list
-   const int N=60;
-   const unsigned char index[] =
-      {
-       2, 1, 0,    3, 2, 0,    4, 3, 0,    5, 4, 0,    1, 5, 0,
-      11, 6, 7,   11, 7, 8,   11, 8, 9,   11, 9,10,   11,10, 6,
-       1, 2, 6,    2, 3, 7,    3, 4, 8,    4, 5, 9,    5, 1,10,
-       2, 7, 6,    3, 8, 7,    4, 9, 8,    5,10, 9,    1, 6,10,
-      };
-   //  Vertex coordinates
-   const float xyz[] =
-      {
-       0.000, 0.000, 1.000,
-       0.894, 0.000, 0.447,
-       0.276, 0.851, 0.447,
-      -0.724, 0.526, 0.447,
-      -0.724,-0.526, 0.447,
-       0.276,-0.851, 0.447,
-       0.724, 0.526,-0.447,
-      -0.276, 0.851,-0.447,
-      -0.894, 0.000,-0.447,
-      -0.276,-0.851,-0.447,
-       0.724,-0.526,-0.447,
-       0.000, 0.000,-1.000
-      };
-   //  Vertex colors
-   const float rgb[] =
-      {
-      0.0,0.0,1.0,
-      0.0,1.0,0.0,
-      0.0,1.0,1.0,
-      1.0,0.0,0.0,
-      1.0,0.0,1.0,
-      1.0,1.0,0.0,
-      0.0,0.0,1.0,
-      0.0,1.0,0.0,
-      0.0,1.0,1.0,
-      1.0,0.0,0.0,
-      1.0,0.0,1.0,
-      1.0,1.0,0.0,
-      };
-   //  Define vertexes
-   glVertexPointer(3,GL_FLOAT,0,xyz);
-   glEnableClientState(GL_VERTEX_ARRAY);
-   //  Define colors for each vertex
-   glColorPointer(3,GL_FLOAT,0,rgb);
-   glEnableClientState(GL_COLOR_ARRAY);
-   //  Draw icosahedron
-   glPushMatrix();
-   glScalef(s,s,s);
-   glDrawElements(GL_TRIANGLES,N,GL_UNSIGNED_BYTE,index);
-   glPopMatrix();
-   //  Disable vertex array
-   glDisableClientState(GL_VERTEX_ARRAY);
-   //  Disable color array
-   glDisableClientState(GL_COLOR_ARRAY);
 }
 
 /*
@@ -477,53 +184,8 @@ void display()
          break;
       //  Draw spheres
       case 1:
-         sphere2(0,0,0 , 1);
-         break;
-      //  Line airplane
-      case 2:
-         PolyPlane(GL_LINE_LOOP , 0,0,0);
-         break;
-      //  Polygon airplane
-      case 3:
-         PolyPlane(GL_POLYGON , 0,0,0);
-         break;
-      //  Three flat airplanes
-      case 4:
-         FlatPlane( 0.0, 0.0, 0.0);
-         FlatPlane(-0.5, 0.5,-0.5);
-         FlatPlane(-0.5,-0.5,-0.5);
-         break;
-      // Three solid airplanes
-      case 5:
-         SolidPlane( 0, 0, 0 , 1,0,0 , 0, 1,0);
-         SolidPlane(-1, 1, 0 ,-1,0,0 , 0,-1,0);
-         SolidPlane(-1,-1, 0 ,-1,0,0 , 0, 1,0);
-         break;
-      // Icosahedron
-      case 6:
-         icosahedron(1.2);
-         break;
-      // Mix of objects
-      case 7:
-         //  Cube
-         cube(-1,0,0 , 0.3,0.3,0.3 , 3*zh);
-         //  Ball
-         sphere1(0,0,0 , 0.3);
-         //  Solid Airplane
-         SolidPlane(Cos(zh),Sin(zh), 0 ,-Sin(zh),Cos(zh),0 , Cos(4*zh),0,Sin(4*zh));
-         //  Icosahedron
-         glPushMatrix();
-         glTranslatef(1,0,0);
-         glRotatef(zh,1,0,0);
-         icosahedron(0.5);
-         glPopMatrix();
-         //  Utah Teapot
-         glPushMatrix();
-         glTranslatef(0,0,-1);
-         glRotatef(zh,0,1,0);
-         glColor3f(Cos(zh)*Cos(zh),0,Sin(zh)*Sin(zh));
-         glutSolidTeapot(0.5);
-         glPopMatrix();
+         sphere2(0,0,0 , 0.5);
+         sphere2(0,0,0 , 0.5);
          break;
    }
    //  White
@@ -597,9 +259,9 @@ void key(unsigned char ch,int x,int y)
       axes = 1-axes;
    //  Switch display mode
    else if (ch == 'm')
-      mode = (mode+1)%8;
+      mode = (mode+1)%2;
    else if (ch == 'M')
-      mode = (mode+7)%8;
+      mode = (mode+7)%2;
    //  Tell GLUT it is necessary to redisplay the scene
    glutPostRedisplay();
 }
