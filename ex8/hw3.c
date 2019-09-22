@@ -79,19 +79,20 @@ void computeHalfVertex(float radius, const float v1[3], const float v2[3], float
  *  Draw icosahedron
  *     size  s
  */
-static void icosahedron(float s)
+static void icosahedron(float s, int subdivision)
 {
    //  Vertex index list
-   const int N=60;
-   const unsigned char tmpIndices[] =
+   int numIndices=60;
+   const unsigned char icoIndices[] =
       {
        2, 1, 0,    3, 2, 0,    4, 3, 0,    5, 4, 0,    1, 5, 0,
       11, 6, 7,   11, 7, 8,   11, 8, 9,   11, 9,10,   11,10, 6,
        1, 2, 6,    2, 3, 7,    3, 4, 8,    4, 5, 9,    5, 1,10,
        2, 7, 6,    3, 8, 7,    4, 9, 8,    5,10, 9,    1, 6,10,
       };
+
    //  Vertex coordinates
-   float tmpVertices[] =
+   float icoVertices[] =
       {
        0.000, 0.000, 1.000,
        0.894, 0.000, 0.447,
@@ -108,48 +109,74 @@ static void icosahedron(float s)
       };
 
    float *v1, *v2, *v3;
-   float vertices[60 * 3 * 4];
-   int indices[60 * 4];
+   float *vertices;
+   int *indices;
    float newV1[3], newV2[3], newV3[3]; // new vertex positions
+   int *tmpIndices = malloc(numIndices * sizeof(int));
+   float *tmpVertices = malloc(numIndices * 3 * sizeof(float));
 
-   for (int j = 0; j < N * 4; j++)
+   for(int i = 0; i < numIndices; i++)
    {
-      indices[j] = j;
+      tmpIndices[i] = icoIndices[i];
+   }
+   for(int i = 0; i < 12 * 3; i++)
+   {
+      tmpVertices[i] = icoVertices[i];
    }
 
-   for (int j = 0; j < N; j+=3)
-   {
-      // get 3 vertices of an existing triangle
-      v1 = &tmpVertices[tmpIndices[j] * 3];
-      v2 = &tmpVertices[tmpIndices[j + 1] * 3];
-      v3 = &tmpVertices[tmpIndices[j + 2] * 3];
+   for(int i = 1; i <= subdivision; i++){
 
-      computeHalfVertex(s, v1, v2, newV1);
-      computeHalfVertex(s, v2, v3, newV2);
-      computeHalfVertex(s, v1, v3, newV3);
+      int newIndices = numIndices * pow(4, i);
+      indices = malloc(newIndices * sizeof(int));
+      vertices = malloc(newIndices * 3 * sizeof(float));
 
-      int vertexStart = j * 3 * 4;
-      addVertices(vertices, vertexStart, v1, newV1, newV3);
-      addVertices(vertices, vertexStart + 9, newV1, v2, newV2);
-      addVertices(vertices, vertexStart + 18, newV1, newV2, newV3);
-      addVertices(vertices, vertexStart + 27, newV3, newV2, v3);
+      for (int j = 0; j < newIndices; j++)
+      {
+         indices[j] = j;
+      }
+
+      for (int j = 0; j < numIndices; j+=3)
+      {
+         // get 3 vertices of an existing triangle
+         v1 = &tmpVertices[tmpIndices[j] * 3];
+         v2 = &tmpVertices[tmpIndices[j + 1] * 3];
+         v3 = &tmpVertices[tmpIndices[j + 2] * 3];
+
+         computeHalfVertex(s, v1, v2, newV1);
+         computeHalfVertex(s, v2, v3, newV2);
+         computeHalfVertex(s, v1, v3, newV3);
+
+         int vertexStart = j * 3 * 4;
+         addVertices(vertices, vertexStart, v1, newV1, newV3);
+         addVertices(vertices, vertexStart + 9, newV1, v2, newV2);
+         addVertices(vertices, vertexStart + 18, newV1, newV2, newV3);
+         addVertices(vertices, vertexStart + 27, newV3, newV2, v3);
+      }
+
+      free(tmpVertices);
+      free(tmpIndices);
+      tmpVertices = vertices;
+      tmpIndices = indices;
+      numIndices = newIndices;
    }
 
    //  Define vertexes
-   glVertexPointer(3, GL_FLOAT, 0, vertices);
+   glVertexPointer(3, GL_FLOAT, 0, tmpVertices);
    glEnableClientState(GL_VERTEX_ARRAY);
    //  Define colors for each vertex
    // glColorPointer(3,GL_FLOAT,0,rgb);
    // glEnableClientState(GL_COLOR_ARRAY);
    //  Draw icosahedron
    glPushMatrix();
-   glScalef(s,s,s);
-   glDrawElements(GL_TRIANGLES, 60 * 4, GL_UNSIGNED_INT, indices);
+   // glScalef(s,s,s);
+   glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, tmpIndices);
    glPopMatrix();
    //  Disable vertex array
    glDisableClientState(GL_VERTEX_ARRAY);
    //  Disable color array
    glDisableClientState(GL_COLOR_ARRAY);
+   free(tmpVertices);
+   free(tmpIndices);
 }
 
 /*
@@ -172,11 +199,10 @@ void display()
    {
       //  Draw cubes
       case 0:
-         icosahedron(1);
+         icosahedron(1, 3);
          break;
       //  Draw spheres
       case 1:
-         icosahedron(1);
          break;
    }
    //  White
