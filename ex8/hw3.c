@@ -28,10 +28,6 @@ double zh=0;      //  Rotation of teapot
 int axes=1;       //  Display axes
 int mode=0;       //  What to display
 
-//  Cosine and Sine in degrees
-#define Cos(x) (cos((x)*3.1415927/180))
-#define Sin(x) (sin((x)*3.1415927/180))
-
 /*
  *  Convenience routine to output raster text
  *  Use VARARGS to make this more flexible
@@ -51,111 +47,109 @@ void Print(const char* format , ...)
       glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18,*ch++);
 }
 
-/*
- *  Draw a cube
- *     at (x,y,z)
- *     dimensions (dx,dy,dz)
- *     rotated th about the y axis
- */
-static void cube(double x,double y,double z,
-                 double dx,double dy,double dz,
-                 double th)
+void addVertices(float vertices[60 * 3 * 4], int j, const float v1[3], const float v2[3], const float v3[3])
 {
-   //  Save transformation
-   glPushMatrix();
-   //  Offset
-   glTranslated(x,y,z);
-   glRotated(th,0,1,0);
-   glScaled(dx,dy,dz);
-   //  Cube
-   glBegin(GL_QUADS);
-   //  Front
-   glColor3f(1,0,0);
-   glVertex3f(-1,-1, 1);
-   glVertex3f(+1,-1, 1);
-   glVertex3f(+1,+1, 1);
-   glVertex3f(-1,+1, 1);
-   //  Back
-   glColor3f(0,0,1);
-   glVertex3f(+1,-1,-1);
-   glVertex3f(-1,-1,-1);
-   glVertex3f(-1,+1,-1);
-   glVertex3f(+1,+1,-1);
-   //  Right
-   glColor3f(1,1,0);
-   glVertex3f(+1,-1,+1);
-   glVertex3f(+1,-1,-1);
-   glVertex3f(+1,+1,-1);
-   glVertex3f(+1,+1,+1);
-   //  Left
-   glColor3f(0,1,0);
-   glVertex3f(-1,-1,-1);
-   glVertex3f(-1,-1,+1);
-   glVertex3f(-1,+1,+1);
-   glVertex3f(-1,+1,-1);
-   //  Top
-   glColor3f(0,1,1);
-   glVertex3f(-1,+1,+1);
-   glVertex3f(+1,+1,+1);
-   glVertex3f(+1,+1,-1);
-   glVertex3f(-1,+1,-1);
-   //  Bottom
-   glColor3f(1,0,1);
-   glVertex3f(-1,-1,-1);
-   glVertex3f(+1,-1,-1);
-   glVertex3f(+1,-1,+1);
-   glVertex3f(-1,-1,+1);
-   //  End
-   glEnd();
-   //  Undo transformations
-   glPopMatrix();
+   vertices[j] = v1[0];
+   vertices[j + 1] = v1[1];
+   vertices[j + 2] = v1[2];
+   vertices[j + 3] = v2[0];
+   vertices[j + 4] = v2[1];
+   vertices[j + 5] = v2[2];   
+   vertices[j + 6] = v3[0];
+   vertices[j + 7] = v3[1];
+   vertices[j + 8] = v3[2];
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// find middle point of 2 vertices
+// NOTE: new vertex must be resized, so the length is equal to the radius
+///////////////////////////////////////////////////////////////////////////////
+void computeHalfVertex(float radius, const float v1[3], const float v2[3], float newV[3])
+{
+    newV[0] = v1[0] + v2[0];    // x
+    newV[1] = v1[1] + v2[1];    // y
+    newV[2] = v1[2] + v2[2];    // z
+    float scale = radius / sqrt(newV[0]*newV[0] + newV[1]*newV[1] + newV[2]*newV[2]);
+    newV[0] *= scale;
+    newV[1] *= scale;
+    newV[2] *= scale;
 }
 
 /*
- *  Draw vertex in polar coordinates
+ *  Draw icosahedron
+ *     size  s
  */
-static void Vertex(double th,double ph)
+static void icosahedron(float s)
 {
-   glColor3f(Cos(th)*Cos(th) , Sin(ph)*Sin(ph) , Sin(th)*Sin(th));
-   glVertex3d(Sin(th)*Cos(ph) , Sin(ph) , Cos(th)*Cos(ph));
-}
-
-static void Vertex2(double th,double ph, double r)
-{
-   glColor3f(Cos(th)*Cos(th) , Sin(ph)*Sin(ph) , Sin(th)*Sin(th));
-   glVertex3d(Sin(th)*Cos(ph) * r , Sin(ph) * r, Cos(th)*Cos(ph) * r);
-}
-
-/*
- *  Draw a sphere (version 2)
- *     at (x,y,z)
- *     radius (r)
- */
-static void sphere2(double x,double y,double z,double r)
-{
-   const int d=5;
-   int th,ph;
-
-   //  Save transformation
-   glPushMatrix();
-   //  Offset and scale
-   glTranslated(x,y,z);
-   glScaled(r, r, r);
-
-   //  Latitude bands
-   for (ph=-90;ph<90;ph+=d)
-   {
-      glBegin(GL_QUAD_STRIP);
-      for (th=0;th<=360;th+=d)
+   //  Vertex index list
+   const int N=60;
+   const unsigned char tmpIndices[] =
       {
-         Vertex(th,ph);
-         Vertex(th,ph+d);
-      }
-      glEnd();
+       2, 1, 0,    3, 2, 0,    4, 3, 0,    5, 4, 0,    1, 5, 0,
+      11, 6, 7,   11, 7, 8,   11, 8, 9,   11, 9,10,   11,10, 6,
+       1, 2, 6,    2, 3, 7,    3, 4, 8,    4, 5, 9,    5, 1,10,
+       2, 7, 6,    3, 8, 7,    4, 9, 8,    5,10, 9,    1, 6,10,
+      };
+   //  Vertex coordinates
+   float tmpVertices[] =
+      {
+       0.000, 0.000, 1.000,
+       0.894, 0.000, 0.447,
+       0.276, 0.851, 0.447,
+      -0.724, 0.526, 0.447,
+      -0.724,-0.526, 0.447,
+       0.276,-0.851, 0.447,
+       0.724, 0.526,-0.447,
+      -0.276, 0.851,-0.447,
+      -0.894, 0.000,-0.447,
+      -0.276,-0.851,-0.447,
+       0.724,-0.526,-0.447,
+       0.000, 0.000,-1.000
+      };
+
+   float *v1, *v2, *v3;
+   float vertices[60 * 3 * 4];
+   int indices[60 * 4];
+   float newV1[3], newV2[3], newV3[3]; // new vertex positions
+
+   for (int j = 0; j < N * 4; j++)
+   {
+      indices[j] = j;
    }
 
-   //  Undo transformations
+   for (int j = 0; j < N; j+=3)
+   {
+      // get 3 vertices of an existing triangle
+      v1 = &tmpVertices[tmpIndices[j] * 3];
+      v2 = &tmpVertices[tmpIndices[j + 1] * 3];
+      v3 = &tmpVertices[tmpIndices[j + 2] * 3];
+
+      computeHalfVertex(s, v1, v2, newV1);
+      computeHalfVertex(s, v2, v3, newV2);
+      computeHalfVertex(s, v1, v3, newV3);
+
+      int vertexStart = j * 3 * 4;
+      addVertices(vertices, vertexStart, v1, newV1, newV3);
+      addVertices(vertices, vertexStart + 9, newV1, v2, newV2);
+      addVertices(vertices, vertexStart + 18, newV1, newV2, newV3);
+      addVertices(vertices, vertexStart + 27, newV3, newV2, v3);
+   }
+
+   //  Define vertexes
+   glVertexPointer(3, GL_FLOAT, 0, vertices);
+   glEnableClientState(GL_VERTEX_ARRAY);
+   //  Define colors for each vertex
+   // glColorPointer(3,GL_FLOAT,0,rgb);
+   // glEnableClientState(GL_COLOR_ARRAY);
+   //  Draw icosahedron
+   glPushMatrix();
+   glScalef(s,s,s);
+   glDrawElements(GL_TRIANGLES, 60 * 4, GL_UNSIGNED_INT, indices);
    glPopMatrix();
+   //  Disable vertex array
+   glDisableClientState(GL_VERTEX_ARRAY);
+   //  Disable color array
+   glDisableClientState(GL_COLOR_ARRAY);
 }
 
 /*
@@ -178,14 +172,11 @@ void display()
    {
       //  Draw cubes
       case 0:
-         cube(0,0,0 , 0.3,0.3,0.3 , 0);
-         cube(1,0,0 , 0.2,0.2,0.2 , 45);
-         cube(0,1,0 , 0.4,0.4,0.2 , 90);
+         icosahedron(1);
          break;
       //  Draw spheres
       case 1:
-         sphere2(0,0,0 , 0.5);
-         sphere2(0,0,0 , 0.5);
+         icosahedron(1);
          break;
    }
    //  White
