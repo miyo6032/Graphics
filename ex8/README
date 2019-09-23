@@ -1,13 +1,20 @@
-ex8: 3D Objects
+HW3
 
-Willem A. (Vlakkies) Schreuder
+Michael Yoshimura
 CSCI4229/5229 Fall 2019
 
-Demonstrates how to draw objects in 3D.
+Contains three scenes showcasing the icosphere, an alternate way of drawing a sphere.
+The first scene shows an icosphere that can have the number of subdivision altered
+The second scene shows an animated blob using the icosphere as the base
+The third scenes put in some various transformations with multiple animated blobs
 
 Key bindings
   m/M        Cycle through different sets of objects
   a          Toggle axes
   arrows     Change view angle
   0          Reset view angle
+  w          Increase the number of subdivisions for objects in mode 0 and 1
+  s          Decrease the number of subdivision for objects in more 0 and 1
   ESC        Exit
+
+Time taken: 8 hours
