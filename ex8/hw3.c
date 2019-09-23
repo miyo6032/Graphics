@@ -205,7 +205,7 @@ static void icosphere(float s, int subdivision, int animation)
    float * rgb = malloc(numIndices * 3 * sizeof(float));
    for (int i = 0; i < numIndices * 3; i++)
    {
-      rgb[i] = vertices[i];
+      rgb[i] = vertices[i] * 0.5 + 0.3;
    }
 
    // Animation done by rescaling the vertices based on the position of each vertex
@@ -275,37 +275,37 @@ void display()
          // Rotate each of the individual objects to where I want them.
          glPushMatrix();
          glTranslatef(0,1,0);
-         icosphere(1.5, 3, 1);
+         icosphere(1, 3, 1);
          glPopMatrix();
 
          glPushMatrix();
          glTranslatef(0,-1,0);
          glRotatef(180, 1, 0, 0);
-         icosphere(1.5, 3, 1);
+         icosphere(1, 3, 1);
          glPopMatrix();
 
          glPushMatrix();
          glTranslatef(1,0,0);
          glRotatef(90, 0, 0, 1);
-         icosphere(1.5, 3, 1);
+         icosphere(1, 3, 1);
          glPopMatrix();
 
          glPushMatrix();
          glTranslatef(-1,0,0);
          glRotatef(-90, 0, 0, 1);
-         icosphere(1.5, 3, 1);
+         icosphere(1, 3, 1);
          glPopMatrix();
 
          glPushMatrix();
          glTranslatef(0,0,1);
          glRotatef(-90, 1, 0, 0);
-         icosphere(1.5, 3, 1);
+         icosphere(1, 3, 1);
          glPopMatrix();
 
          glPushMatrix();
          glTranslatef(0,0,-1);
          glRotatef(90, 1, 0, 0);
-         icosphere(1.5, 3, 1);
+         icosphere(1, 3, 1);
          glPopMatrix();
 
          glPopMatrix();
