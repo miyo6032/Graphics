@@ -1,15 +1,22 @@
 /*
- *  3D Objects
+ *  Homework 3
  *
- *  Demonstrates how to draw objects in 3D.
+ *  Three scenes that show a complex object with different animations and transformations
  *
  *  Key bindings:
  *  m/M        Cycle through different sets of objects
  *  a          Toggle axes
  *  arrows     Change view angle
  *  0          Reset view angle
+ *  w          Increase the number of subdivisions for objects in mode 0 and 1
+ *  s          Decrease the number of subdivision for objects in more 0 and 1
  *  ESC        Exit
  */
+
+/*
+ * CREDIT: Isophere code largely sourced from http://www.songho.ca/opengl/gl_sphere.html
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -31,7 +38,7 @@ int ph=0;         //  Elevation of view angle
 double zh=0;      //  Rotation of teapot
 int axes=1;       //  Display axes
 int mode=0;       //  What to display
-int subdivisions=0;
+int subdivisions=0; // Number of times to subdivide the icosahedron triangles
 
 /*
  *  Convenience routine to output raster text
@@ -52,7 +59,7 @@ void Print(const char* format , ...)
       glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18,*ch++);
 }
 
-void addVertices(float vertices[60 * 3 * 4], int j, const float v1[3], const float v2[3], const float v3[3])
+void addVertices(float *vertices, int j, const float v1[3], const float v2[3], const float v3[3])
 {
    vertices[j] = v1[0];
    vertices[j + 1] = v1[1];
@@ -77,6 +84,7 @@ void rescale(float radius, float v[3])
 // find middle point of 2 vertices
 // NOTE: new vertex must be resized, so the length is equal to the radius
 ///////////////////////////////////////////////////////////////////////////////
+// from http://www.songho.ca/opengl/gl_sphere.html
 void computeHalfVertex(const float v1[3], const float v2[3], float newV[3])
 {
     newV[0] = v1[0] + v2[0];    // x
@@ -87,7 +95,7 @@ void computeHalfVertex(const float v1[3], const float v2[3], float newV[3])
 
 float wave(const float v[3])
 {
-   return ((1.1 + sin(v[1]) * Sin(zh)) * 0.4);
+   return ((1.1 + sin(v[1] * 2) * Sin(zh)) * 0.4);
 }
 
 /*
@@ -95,6 +103,8 @@ float wave(const float v[3])
  *     size
  *     subivisions: number of times to divide the triangles from an icosahedron
  *     animation: 1 if play a weird blobby animation
+ *
+ * CREDIT: Isophere code largely sourced from http://www.songho.ca/opengl/gl_sphere.html
  */
 static void icosphere(float s, int subdivision, int animation)
 {
@@ -125,6 +135,10 @@ static void icosphere(float s, int subdivision, int animation)
        0.000, 0.000,-1.000
       };
 
+   /*
+    * We define temporary indices and vertices so that we can use them dynamically as the number of triangles increases
+    * with every subdivision. 
+    */
    float *v1, *v2, *v3;
    float * tempVertices;
    int * tempIndices;
@@ -132,25 +146,27 @@ static void icosphere(float s, int subdivision, int animation)
    int * indices = malloc(numIndices * sizeof(int));
    float * vertices = malloc(numIndices * 3 * sizeof(float));
 
+   // Orders the indices
    for(int i = 0; i < numIndices; i++)
    {
       indices[i] = icoIndices[i];
    }
 
-   for(int i = 0; i < 12 * 3; i+=3)
+   // Order the vertices so that the they can be rendered as triangles in order
+   for(int i = 0; i < 12 * 3; i++)
    {
-      // Scale the initial vertices as well
       vertices[i] = icoVertices[i];
-      vertices[i + 1] = icoVertices[i + 1];
-      vertices[i + 2] = icoVertices[i + 2];
    }
 
+   // Subdivision algorithm
    for(int i = 1; i <= subdivision; i++){
 
-      int newIndices = numIndices * pow(4, i);
+      // Subdivides every triangle into 4 new triangles, so allocate 4 times the previous number of indices
+      int newIndices = numIndices * 4;
       tempIndices = malloc(newIndices * sizeof(int));
-      tempVertices = malloc(newIndices * 3 * sizeof(float));
+      tempVertices = malloc(newIndices * 3 * sizeof(float)); // Multiply by 3 because needs 3 coords to specify a single vertex
 
+      // Just order the indices in order
       for (int j = 0; j < newIndices; j++)
       {
          tempIndices[j] = j;
@@ -158,15 +174,19 @@ static void icosphere(float s, int subdivision, int animation)
 
       for (int j = 0; j < numIndices; j+=3)
       {
-         // get 3 tempVertices of an existing triangle
+         // get 3 vertices of an existing triangle
          v1 = &vertices[indices[j] * 3];
          v2 = &vertices[indices[j + 1] * 3];
          v3 = &vertices[indices[j + 2] * 3];
 
+         // To the halfway points in between the three edges of the triangle and get the vertex at that point
          computeHalfVertex(v1, v2, newV1);
          computeHalfVertex(v2, v3, newV2);
          computeHalfVertex(v1, v3, newV3);
 
+         // Adds three new vertices for each one of the four triangles created from subdiving the large triangle
+         // Obviously this is inefficient because we really only needs 6 vertices instead of 12, but whatever, it works
+         // with no major performance problems
          int vertexStart = j * 3 * 4;
          addVertices(tempVertices, vertexStart, v1, newV1, newV3);
          addVertices(tempVertices, vertexStart + 9, newV1, v2, newV2);
@@ -181,13 +201,14 @@ static void icosphere(float s, int subdivision, int animation)
       numIndices = newIndices;
    }
 
+   // Basic rbg algorithm
    float * rgb = malloc(numIndices * 3 * sizeof(float));
-
    for (int i = 0; i < numIndices * 3; i++)
    {
       rgb[i] = vertices[i];
    }
 
+   // Animation done by rescaling the vertices based on the position of each vertex
    if(animation){
       for (int i = 0; i < numIndices * 3; i+=3)
       {
@@ -233,49 +254,58 @@ void display()
    //  Decide what to draw
    switch (mode)
    {
-      //  Draw cubes
+      //  Draw a single icosphere that can be adjusted
       case 0:
          icosphere(1, subdivisions, 0);
          Print(" Subdivisions=%d ", subdivisions);
          break;
-      //  Draw spheres
+      //  Draw an animated blob
       case 1:
-         icosphere(1, subdivisions, 1);
+         icosphere(1.5, subdivisions, 1);
          Print(" Subdivisions=%d ", subdivisions);
          break;
+      // Draw 6 meticulously arranged animated blobs
       case 2:
          glPushMatrix();
 
+         // Rotate and float the entire situation
          glTranslatef(0,Cos(zh),0);
          glRotatef(zh,0,1,0);
 
+         // Rotate each of the individual objects to where I want them.
          glPushMatrix();
          glTranslatef(0,1,0);
-         icosphere(1.5, 2, 1);
+         icosphere(1.5, 3, 1);
+         glPopMatrix();
+
+         glPushMatrix();
+         glTranslatef(0,-1,0);
+         glRotatef(180, 1, 0, 0);
+         icosphere(1.5, 3, 1);
          glPopMatrix();
 
          glPushMatrix();
          glTranslatef(1,0,0);
          glRotatef(90, 0, 0, 1);
-         icosphere(1.5, 2, 1);
+         icosphere(1.5, 3, 1);
          glPopMatrix();
 
          glPushMatrix();
          glTranslatef(-1,0,0);
          glRotatef(-90, 0, 0, 1);
-         icosphere(1.5, 2, 1);
+         icosphere(1.5, 3, 1);
          glPopMatrix();
 
          glPushMatrix();
          glTranslatef(0,0,1);
          glRotatef(-90, 1, 0, 0);
-         icosphere(1.5, 2, 1);
+         icosphere(1.5, 3, 1);
          glPopMatrix();
 
          glPushMatrix();
          glTranslatef(0,0,-1);
          glRotatef(90, 1, 0, 0);
-         icosphere(1.5, 2, 1);
+         icosphere(1.5, 3, 1);
          glPopMatrix();
 
          glPopMatrix();
@@ -354,7 +384,8 @@ void key(unsigned char ch,int x,int y)
       mode = (mode+1)%3;
    else if (ch == 'M')
       mode = (mode+7)%3;
-   else if (ch == 'w' && subdivisions < 3)
+   // Adjust subivisions
+   else if (ch == 'w' && subdivisions < 4)
       subdivisions++;
    else if (ch == 's' && subdivisions > 0)
       subdivisions--;
