@@ -22,11 +22,16 @@
 #include <GL/glut.h>
 #endif
 
+//  Cosine and Sine in degrees
+#define Cos(x) (cos((x)*3.1415927/180))
+#define Sin(x) (sin((x)*3.1415927/180))
+
 int th=0;         //  Azimuth of view angle
 int ph=0;         //  Elevation of view angle
 double zh=0;      //  Rotation of teapot
 int axes=1;       //  Display axes
 int mode=0;       //  What to display
+int subdivisions=0;
 
 /*
  *  Convenience routine to output raster text
@@ -60,26 +65,38 @@ void addVertices(float vertices[60 * 3 * 4], int j, const float v1[3], const flo
    vertices[j + 8] = v3[2];
 }
 
+void rescale(float radius, float v[3])
+{
+    float scale = radius / sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    v[0] *= scale;
+    v[1] *= scale;
+    v[2] *= scale;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // find middle point of 2 vertices
 // NOTE: new vertex must be resized, so the length is equal to the radius
 ///////////////////////////////////////////////////////////////////////////////
-void computeHalfVertex(float radius, const float v1[3], const float v2[3], float newV[3])
+void computeHalfVertex(const float v1[3], const float v2[3], float newV[3])
 {
     newV[0] = v1[0] + v2[0];    // x
     newV[1] = v1[1] + v2[1];    // y
     newV[2] = v1[2] + v2[2];    // z
-    float scale = radius / sqrt(newV[0]*newV[0] + newV[1]*newV[1] + newV[2]*newV[2]);
-    newV[0] *= scale;
-    newV[1] *= scale;
-    newV[2] *= scale;
+    rescale(1, newV);
+}
+
+float wave(const float v[3])
+{
+   return ((1.1 + sin(v[1]) * Sin(zh)) * 0.4);
 }
 
 /*
- *  Draw icosahedron
- *     size  s
+ *  Draw icosphere
+ *     size
+ *     subivisions: number of times to divide the triangles from an icosahedron
+ *     animation: 1 if play a weird blobby animation
  */
-static void icosahedron(float s, int subdivision)
+static void icosphere(float s, int subdivision, int animation)
 {
    //  Vertex index list
    int numIndices=60;
@@ -109,74 +126,93 @@ static void icosahedron(float s, int subdivision)
       };
 
    float *v1, *v2, *v3;
-   float *vertices;
-   int *indices;
+   float * tempVertices;
+   int * tempIndices;
    float newV1[3], newV2[3], newV3[3]; // new vertex positions
-   int *tmpIndices = malloc(numIndices * sizeof(int));
-   float *tmpVertices = malloc(numIndices * 3 * sizeof(float));
+   int * indices = malloc(numIndices * sizeof(int));
+   float * vertices = malloc(numIndices * 3 * sizeof(float));
 
    for(int i = 0; i < numIndices; i++)
    {
-      tmpIndices[i] = icoIndices[i];
+      indices[i] = icoIndices[i];
    }
-   for(int i = 0; i < 12 * 3; i++)
+
+   for(int i = 0; i < 12 * 3; i+=3)
    {
-      tmpVertices[i] = icoVertices[i];
+      // Scale the initial vertices as well
+      vertices[i] = icoVertices[i];
+      vertices[i + 1] = icoVertices[i + 1];
+      vertices[i + 2] = icoVertices[i + 2];
    }
 
    for(int i = 1; i <= subdivision; i++){
 
       int newIndices = numIndices * pow(4, i);
-      indices = malloc(newIndices * sizeof(int));
-      vertices = malloc(newIndices * 3 * sizeof(float));
+      tempIndices = malloc(newIndices * sizeof(int));
+      tempVertices = malloc(newIndices * 3 * sizeof(float));
 
       for (int j = 0; j < newIndices; j++)
       {
-         indices[j] = j;
+         tempIndices[j] = j;
       }
 
       for (int j = 0; j < numIndices; j+=3)
       {
-         // get 3 vertices of an existing triangle
-         v1 = &tmpVertices[tmpIndices[j] * 3];
-         v2 = &tmpVertices[tmpIndices[j + 1] * 3];
-         v3 = &tmpVertices[tmpIndices[j + 2] * 3];
+         // get 3 tempVertices of an existing triangle
+         v1 = &vertices[indices[j] * 3];
+         v2 = &vertices[indices[j + 1] * 3];
+         v3 = &vertices[indices[j + 2] * 3];
 
-         computeHalfVertex(s, v1, v2, newV1);
-         computeHalfVertex(s, v2, v3, newV2);
-         computeHalfVertex(s, v1, v3, newV3);
+         computeHalfVertex(v1, v2, newV1);
+         computeHalfVertex(v2, v3, newV2);
+         computeHalfVertex(v1, v3, newV3);
 
          int vertexStart = j * 3 * 4;
-         addVertices(vertices, vertexStart, v1, newV1, newV3);
-         addVertices(vertices, vertexStart + 9, newV1, v2, newV2);
-         addVertices(vertices, vertexStart + 18, newV1, newV2, newV3);
-         addVertices(vertices, vertexStart + 27, newV3, newV2, v3);
+         addVertices(tempVertices, vertexStart, v1, newV1, newV3);
+         addVertices(tempVertices, vertexStart + 9, newV1, v2, newV2);
+         addVertices(tempVertices, vertexStart + 18, newV1, newV2, newV3);
+         addVertices(tempVertices, vertexStart + 27, newV3, newV2, v3);
       }
 
-      free(tmpVertices);
-      free(tmpIndices);
-      tmpVertices = vertices;
-      tmpIndices = indices;
+      free(vertices);
+      free(indices);
+      vertices = tempVertices;
+      indices = tempIndices;
       numIndices = newIndices;
    }
 
+   float * rgb = malloc(numIndices * 3 * sizeof(float));
+
+   for (int i = 0; i < numIndices * 3; i++)
+   {
+      rgb[i] = vertices[i];
+   }
+
+   if(animation){
+      for (int i = 0; i < numIndices * 3; i+=3)
+      {
+         rescale(wave(&vertices[i]), &vertices[i]);
+      }
+   }
+
    //  Define vertexes
-   glVertexPointer(3, GL_FLOAT, 0, tmpVertices);
+   glVertexPointer(3, GL_FLOAT, 0, vertices);
    glEnableClientState(GL_VERTEX_ARRAY);
    //  Define colors for each vertex
-   // glColorPointer(3,GL_FLOAT,0,rgb);
-   // glEnableClientState(GL_COLOR_ARRAY);
+   glColorPointer(3,GL_FLOAT,0,rgb);
+   glEnableClientState(GL_COLOR_ARRAY);
    //  Draw icosahedron
    glPushMatrix();
-   // glScalef(s,s,s);
-   glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, tmpIndices);
+   glScalef(s, s, s);
+   glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, indices);
    glPopMatrix();
    //  Disable vertex array
    glDisableClientState(GL_VERTEX_ARRAY);
    //  Disable color array
    glDisableClientState(GL_COLOR_ARRAY);
-   free(tmpVertices);
-   free(tmpIndices);
+   free(vertices);
+   free(indices);
+   free(rgb);
 }
 
 /*
@@ -199,11 +235,50 @@ void display()
    {
       //  Draw cubes
       case 0:
-         icosahedron(1, 3);
+         icosphere(1, subdivisions, 0);
+         Print(" Subdivisions=%d ", subdivisions);
          break;
       //  Draw spheres
       case 1:
+         icosphere(1, subdivisions, 1);
+         Print(" Subdivisions=%d ", subdivisions);
          break;
+      case 2:
+         glPushMatrix();
+
+         glTranslatef(0,Cos(zh),0);
+         glRotatef(zh,0,1,0);
+
+         glPushMatrix();
+         glTranslatef(0,1,0);
+         icosphere(1.5, 2, 1);
+         glPopMatrix();
+
+         glPushMatrix();
+         glTranslatef(1,0,0);
+         glRotatef(90, 0, 0, 1);
+         icosphere(1.5, 2, 1);
+         glPopMatrix();
+
+         glPushMatrix();
+         glTranslatef(-1,0,0);
+         glRotatef(-90, 0, 0, 1);
+         icosphere(1.5, 2, 1);
+         glPopMatrix();
+
+         glPushMatrix();
+         glTranslatef(0,0,1);
+         glRotatef(-90, 1, 0, 0);
+         icosphere(1.5, 2, 1);
+         glPopMatrix();
+
+         glPushMatrix();
+         glTranslatef(0,0,-1);
+         glRotatef(90, 1, 0, 0);
+         icosphere(1.5, 2, 1);
+         glPopMatrix();
+
+         glPopMatrix();
    }
    //  White
    glColor3f(1,1,1);
@@ -229,7 +304,7 @@ void display()
    //  Five pixels from the lower left corner of the window
    glWindowPos2i(5,25);
    //  Print the text string
-   Print("Angle=%d,%d",th,ph);
+   Print("Angle=%d,%d, Mode=%d,",th, ph, mode);
    //  Render the scene
    glFlush();
    //  Make the rendered scene visible
@@ -276,9 +351,13 @@ void key(unsigned char ch,int x,int y)
       axes = 1-axes;
    //  Switch display mode
    else if (ch == 'm')
-      mode = (mode+1)%2;
+      mode = (mode+1)%3;
    else if (ch == 'M')
-      mode = (mode+7)%2;
+      mode = (mode+7)%3;
+   else if (ch == 'w' && subdivisions < 3)
+      subdivisions++;
+   else if (ch == 's' && subdivisions > 0)
+      subdivisions--;
    //  Tell GLUT it is necessary to redisplay the scene
    glutPostRedisplay();
 }
