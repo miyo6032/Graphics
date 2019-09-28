@@ -7,9 +7,9 @@
  *  m/M        Cycle through different sets of objects
  *  a          Toggle axes
  *  arrows     Change view angle
+ *  w/s  Zoom in and out
+ *  +/-        Changes field of view for perspective
  *  0          Reset view angle
- *  w          Increase the number of subdivisions for objects in mode 0 and 1
- *  s          Decrease the number of subdivision for objects in more 0 and 1
  *  ESC        Exit
  */
 
@@ -37,8 +37,11 @@ int th=0;         //  Azimuth of view angle
 int ph=0;         //  Elevation of view angle
 double zh=0;      //  Rotation of teapot
 int axes=1;       //  Display axes
-int mode=0;       //  What to display
-int subdivisions=0; // Number of times to subdivide the icosahedron triangles
+int mode=0;       //  Projection mode
+
+int fov=55;       //  Field of view (for perspective)
+double asp=1;     //  Aspect ratio
+double dim=5.0;   //  Size of world
 
 /*
  *  Convenience routine to output raster text
@@ -240,6 +243,48 @@ static void icosphere(float s, int subdivision, int animation)
 }
 
 /*
+ *  Set projection
+ */
+static void Project()
+{
+   //  Tell OpenGL we want to manipulate the projection matrix
+   glMatrixMode(GL_PROJECTION);
+   //  Undo previous transformations
+   glLoadIdentity();
+   //  Perspective transformation
+   if (mode)
+      gluPerspective(fov,asp,dim/4,4*dim);
+   //  Orthogonal projection
+   else
+      glOrtho(-asp*dim,+asp*dim, -dim,+dim, -dim,+dim);
+   //  Switch to manipulating the model matrix
+   glMatrixMode(GL_MODELVIEW);
+   //  Undo previous transformations
+   glLoadIdentity();
+}
+
+/*
+ * Determines the orentation depending on which perspective used
+ */
+void determineCameraOrientation()
+{
+   //  Perspective - set eye position
+   if (mode)
+   {
+      double Ex = -2*dim*Sin(th)*Cos(ph);
+      double Ey = +2*dim        *Sin(ph);
+      double Ez = +2*dim*Cos(th)*Cos(ph);
+      gluLookAt(Ex,Ey,Ez , 0,0,0 , 0,Cos(ph),0);
+   }
+   //  Orthogonal - set world orientation
+   else
+   {
+      glRotatef(ph,1,0,0);
+      glRotatef(th,0,1,0);
+   }
+}
+
+/*
  *  OpenGL (GLUT) calls this routine to display the scene
  */
 void display()
@@ -251,68 +296,53 @@ void display()
    glEnable(GL_DEPTH_TEST);
    //  Undo previous transformations
    glLoadIdentity();
-   //  Set view angle
-   glRotatef(ph,1,0,0);
-   glRotatef(th,0,1,0);
-   //  Decide what to draw
-   switch (mode)
-   {
-      //  Draw a single icosphere that can be adjusted
-      case 0:
-         icosphere(1, subdivisions, 0);
-         Print(" Subdivisions=%d ", subdivisions);
-         break;
-      //  Draw an animated blob
-      case 1:
-         icosphere(1.5, subdivisions, 1);
-         Print(" Subdivisions=%d ", subdivisions);
-         break;
-      // Draw 6 meticulously arranged animated blobs
-      case 2:
-         glPushMatrix();
+   //  Handle different perspectives
+   determineCameraOrientation();
 
-         // Rotate and float the entire situation
-         glTranslatef(0,Cos(zh),0);
-         glRotatef(zh,0,1,0);
+   glPushMatrix();
 
-         // Rotate each of the individual objects to where I want them.
-         glPushMatrix();
-         glTranslatef(0,1,0);
-         icosphere(1, 3, 1);
-         glPopMatrix();
+   // Rotate and float the entire situation
+   glTranslatef(0,Cos(zh),0);
+   glRotatef(zh,0,1,0);
 
-         glPushMatrix();
-         glTranslatef(0,-1,0);
-         glRotatef(180, 1, 0, 0);
-         icosphere(1, 3, 1);
-         glPopMatrix();
+   // Rotate each of the individual objects to where I want them.
+   glPushMatrix();
+   glTranslatef(0,1,0);
+   icosphere(1, 3, 1);
+   glPopMatrix();
 
-         glPushMatrix();
-         glTranslatef(1,0,0);
-         glRotatef(90, 0, 0, 1);
-         icosphere(1, 3, 1);
-         glPopMatrix();
+   glPushMatrix();
+   glTranslatef(0,-1,0);
+   glRotatef(180, 1, 0, 0);
+   icosphere(1, 3, 1);
+   glPopMatrix();
 
-         glPushMatrix();
-         glTranslatef(-1,0,0);
-         glRotatef(-90, 0, 0, 1);
-         icosphere(1, 3, 1);
-         glPopMatrix();
+   glPushMatrix();
+   glTranslatef(1,0,0);
+   glRotatef(90, 0, 0, 1);
+   icosphere(1, 3, 1);
+   glPopMatrix();
 
-         glPushMatrix();
-         glTranslatef(0,0,1);
-         glRotatef(-90, 1, 0, 0);
-         icosphere(1, 3, 1);
-         glPopMatrix();
+   glPushMatrix();
+   glTranslatef(-1,0,0);
+   glRotatef(-90, 0, 0, 1);
+   icosphere(1, 3, 1);
+   glPopMatrix();
 
-         glPushMatrix();
-         glTranslatef(0,0,-1);
-         glRotatef(90, 1, 0, 0);
-         icosphere(1, 3, 1);
-         glPopMatrix();
+   glPushMatrix();
+   glTranslatef(0,0,1);
+   glRotatef(-90, 1, 0, 0);
+   icosphere(1, 3, 1);
+   glPopMatrix();
 
-         glPopMatrix();
-   }
+   glPushMatrix();
+   glTranslatef(0,0,-1);
+   glRotatef(90, 1, 0, 0);
+   icosphere(1, 3, 1);
+   glPopMatrix();
+
+   glPopMatrix();
+   
    //  White
    glColor3f(1,1,1);
    //  Draw axes
@@ -337,7 +367,7 @@ void display()
    //  Five pixels from the lower left corner of the window
    glWindowPos2i(5,25);
    //  Print the text string
-   Print("Angle=%d,%d, Mode=%d,",th, ph, mode);
+   Print("Angle=%d,%d  Dim=%.1f FOV=%d Projection=%s",th,ph,dim,fov,mode?"Perpective":"Orthogonal");
    //  Render the scene
    glFlush();
    //  Make the rendered scene visible
@@ -364,6 +394,8 @@ void special(int key,int x,int y)
    //  Keep angles to +/-360 degrees
    th %= 360;
    ph %= 360;
+   //  Update projection
+   Project();
    //  Tell GLUT it is necessary to redisplay the scene
    glutPostRedisplay();
 }
@@ -384,14 +416,21 @@ void key(unsigned char ch,int x,int y)
       axes = 1-axes;
    //  Switch display mode
    else if (ch == 'm')
-      mode = (mode+1)%3;
+      mode = (mode+1)%2;
    else if (ch == 'M')
-      mode = (mode+7)%3;
-   // Adjust subivisions
-   else if (ch == 'w' && subdivisions < 4)
-      subdivisions++;
-   else if (ch == 's' && subdivisions > 0)
-      subdivisions--;
+      mode = (mode+1)%2;
+   //  Change field of view angle
+   else if (ch == '-' && ch>1)
+      fov--;
+   else if (ch == '+' && ch<179)
+      fov++;
+   //  Change dimension
+   else if (ch == 'w')
+      dim += 0.1;
+   else if (ch == 's')
+      dim -= 0.1;
+   //  Reproject
+   Project();
    //  Tell GLUT it is necessary to redisplay the scene
    glutPostRedisplay();
 }
@@ -401,21 +440,11 @@ void key(unsigned char ch,int x,int y)
  */
 void reshape(int width,int height)
 {
-   const double dim=2.5;
-   //  Ratio of the width to the height of the window
-   double w2h = (height>0) ? (double)width/height : 1;
+   asp = (height>0) ? (double)width/height : 1;
    //  Set the viewport to the entire window
    glViewport(0,0, width,height);
-   //  Tell OpenGL we want to manipulate the projection matrix
-   glMatrixMode(GL_PROJECTION);
-   //  Undo previous transformations
-   glLoadIdentity();
-   //  Orthogonal projection
-   glOrtho(-w2h*dim,+w2h*dim, -dim,+dim, -dim,+dim);
-   //  Switch to manipulating the model matrix
-   glMatrixMode(GL_MODELVIEW);
-   //  Undo previous transformations
-   glLoadIdentity();
+   //  Set projection
+   Project();
 }
 
 /*
@@ -439,7 +468,7 @@ int main(int argc,char* argv[])
    glutInitWindowSize(600,600);
    glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
    //  Create the window
-   glutCreateWindow("Homework3_Michael_Yoshimura");
+   glutCreateWindow("Homework4_Michael_Yoshimura");
    //  Tell GLUT to call "idle" when there is nothing else to do
    glutIdleFunc(idle);
    //  Tell GLUT to call "display" when the scene should be drawn
