@@ -93,9 +93,12 @@ void computeHalfVertex(const float v1[3], const float v2[3], float newV[3])
     rescale(1, newV);
 }
 
+/*
+ * A function that returns interesting magnitudes to make the sphere into an animated blob
+ */
 float wave(const float v[3])
 {
-   return ((1.1 + sin(v[1] * 2) * Sin(zh)) * 0.4);
+   return ((1.1 + sin(v[1]) * Sin(zh)) * 0.4);
 }
 
 /*
