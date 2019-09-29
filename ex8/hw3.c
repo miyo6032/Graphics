@@ -7,7 +7,7 @@
  *  m/M        Cycle through different sets of objects
  *  a          Toggle axes
  *  arrows     Change view angle
- *  w/s  Zoom in and out
+ *  z/x  Zoom in and out
  *  +/-        Changes field of view for perspective
  *  0          Reset view angle
  *  ESC        Exit
@@ -42,6 +42,14 @@ int mode=0;       //  Projection mode
 int fov=55;       //  Field of view (for perspective)
 double asp=1;     //  Aspect ratio
 double dim=5.0;   //  Size of world
+
+// First person stuff
+double posX = 0;
+double posY = 0;
+double posZ = 0;
+
+double yaw = 0;
+double pitch = 0;
 
 /*
  *  Convenience routine to output raster text
@@ -251,8 +259,10 @@ static void Project()
    glMatrixMode(GL_PROJECTION);
    //  Undo previous transformations
    glLoadIdentity();
+   if (mode == 2)
+      gluPerspective(fov,asp,dim/4,4*dim);
    //  Perspective transformation
-   if (mode)
+   else if (mode == 1)
       gluPerspective(fov,asp,dim/4,4*dim);
    //  Orthogonal projection
    else
@@ -263,17 +273,41 @@ static void Project()
    glLoadIdentity();
 }
 
+double getZ(double th, double ph)
+{
+   return Cos(th)*Cos(ph);
+}
+
+double getX(double th, double ph)
+{
+   return -Sin(th)*Cos(ph);
+}
+
+double getY(double th, double ph)
+{
+   return Sin(ph);
+}
+
 /*
  * Determines the orentation depending on which perspective used
  */
 void determineCameraOrientation()
 {
    //  Perspective - set eye position
-   if (mode)
+   if (mode == 2)
    {
-      double Ex = -2*dim*Sin(th)*Cos(ph);
-      double Ey = +2*dim        *Sin(ph);
-      double Ez = +2*dim*Cos(th)*Cos(ph);
+      double lookX = posX - getX(yaw, pitch);
+      double lookY = posY - getY(yaw, pitch);
+      double lookZ = posZ - getZ(yaw, pitch);
+      Print("Pos: [%f, %f, %f], Look: [%f, %f, %f]", posX, posY, posZ, lookX, lookY, lookZ);
+      gluLookAt(posX, posY, posZ, lookX, lookY, lookZ, 0,Cos(pitch),0);
+   }
+   else if (mode == 1)
+   {
+      double Ex = 2*dim*getX(th, ph);
+      double Ey = 2*dim*getY(th, ph);
+      double Ez = 2*dim*getZ(th, ph);
+      Print("Pos: [%f, %f, %f]", Ex, Ey, Ez);
       gluLookAt(Ex,Ey,Ez , 0,0,0 , 0,Cos(ph),0);
    }
    //  Orthogonal - set world orientation
@@ -367,7 +401,7 @@ void display()
    //  Five pixels from the lower left corner of the window
    glWindowPos2i(5,25);
    //  Print the text string
-   Print("Angle=%d,%d  Dim=%.1f FOV=%d Projection=%s",th,ph,dim,fov,mode?"Perpective":"Orthogonal");
+   // Print("Angle=%d,%d  Dim=%.1f FOV=%d Projection Mode=%d",th,ph,dim,fov,mode);
    //  Render the scene
    glFlush();
    //  Make the rendered scene visible
@@ -400,6 +434,15 @@ void special(int key,int x,int y)
    glutPostRedisplay();
 }
 
+void matchViewAngle()
+{
+   yaw = th;
+   pitch = ph;
+   posX = 2*dim*getX(th, ph);
+   posY = 2*dim*getY(th, ph);
+   posZ = 2*dim*getZ(th, ph);
+}
+
 /*
  *  GLUT calls this routine when a key is pressed
  */
@@ -415,19 +458,27 @@ void key(unsigned char ch,int x,int y)
    else if (ch == 'a' || ch == 'A')
       axes = 1-axes;
    //  Switch display mode
-   else if (ch == 'm')
-      mode = (mode+1)%2;
-   else if (ch == 'M')
-      mode = (mode+1)%2;
+   else if (ch == 'm'){
+      mode = (mode+1)%3;
+      if(mode == 2){
+         matchViewAngle();
+      }
+   }
+   else if (ch == 'M'){
+      mode = (mode+1)%3;
+      if(mode == 2){
+         matchViewAngle();
+      }
+   }
    //  Change field of view angle
    else if (ch == '-' && ch>1)
       fov--;
    else if (ch == '+' && ch<179)
       fov++;
    //  Change dimension
-   else if (ch == 'w')
+   else if (ch == 'z')
       dim += 0.1;
-   else if (ch == 's')
+   else if (ch == 'x')
       dim -= 0.1;
    //  Reproject
    Project();
