@@ -5,7 +5,6 @@
  *
  *  Key bindings:
  *  m/M        Cycle through different sets of objects
- *  a          Toggle axes
  *  arrows     Change view angle
  *  z/x  Zoom in and out
  *  +/-        Changes field of view for perspective
@@ -32,11 +31,11 @@
 //  Cosine and Sine in degrees
 #define Cos(x) (cos((x)*3.1415927/180))
 #define Sin(x) (sin((x)*3.1415927/180))
+#define speed 0.1
 
 int th=0;         //  Azimuth of view angle
 int ph=0;         //  Elevation of view angle
 double zh=0;      //  Rotation of teapot
-int axes=1;       //  Display axes
 int mode=0;       //  Projection mode
 
 int fov=55;       //  Field of view (for perspective)
@@ -260,7 +259,8 @@ static void Project()
    //  Undo previous transformations
    glLoadIdentity();
    if (mode == 2)
-      gluPerspective(fov,asp,dim/4,4*dim);
+   // Make the close clipping plane much closer to reduce the amount of clipping weirdness that happens
+      gluPerspective(fov,asp,dim/16,dim);
    //  Perspective transformation
    else if (mode == 1)
       gluPerspective(fov,asp,dim/4,4*dim);
@@ -273,6 +273,9 @@ static void Project()
    glLoadIdentity();
 }
 
+/*
+ * These three helper functions convert polar coordinates to regular coordinates
+ */
 double getZ(double th, double ph)
 {
    return Cos(th)*Cos(ph);
@@ -296,18 +299,17 @@ void determineCameraOrientation()
    //  Perspective - set eye position
    if (mode == 2)
    {
-      double lookX = posX - getX(yaw, pitch);
-      double lookY = posY - getY(yaw, pitch);
-      double lookZ = posZ - getZ(yaw, pitch);
-      Print("Pos: [%f, %f, %f], Look: [%f, %f, %f]", posX, posY, posZ, lookX, lookY, lookZ);
-      gluLookAt(posX, posY, posZ, lookX, lookY, lookZ, 0,Cos(pitch),0);
+      double lookX = posX + getX(yaw, pitch);
+      double lookY = posY + getY(yaw, pitch);
+      double lookZ = posZ + getZ(yaw, pitch);
+      // I limit the pitch to -90 and 90, so the up direction is always 1
+      gluLookAt(posX, posY, posZ, lookX, lookY, lookZ, 0,1,0);
    }
    else if (mode == 1)
    {
       double Ex = 2*dim*getX(th, ph);
       double Ey = 2*dim*getY(th, ph);
       double Ez = 2*dim*getZ(th, ph);
-      Print("Pos: [%f, %f, %f]", Ex, Ey, Ez);
       gluLookAt(Ex,Ey,Ez , 0,0,0 , 0,Cos(ph),0);
    }
    //  Orthogonal - set world orientation
@@ -335,69 +337,62 @@ void display()
 
    glPushMatrix();
 
-   // Rotate and float the entire situation
-   glTranslatef(0,Cos(zh),0);
-   glRotatef(zh,0,1,0);
-
    // Rotate each of the individual objects to where I want them.
    glPushMatrix();
-   glTranslatef(0,1,0);
+   glTranslatef(0,2,0);
    icosphere(1, 3, 1);
    glPopMatrix();
 
    glPushMatrix();
-   glTranslatef(0,-1,0);
+   glTranslatef(0,-2,0);
    glRotatef(180, 1, 0, 0);
    icosphere(1, 3, 1);
    glPopMatrix();
 
    glPushMatrix();
-   glTranslatef(1,0,0);
+   glTranslatef(2,0,0);
    glRotatef(90, 0, 0, 1);
    icosphere(1, 3, 1);
    glPopMatrix();
 
    glPushMatrix();
-   glTranslatef(-1,0,0);
+   glTranslatef(-2,0,0);
    glRotatef(-90, 0, 0, 1);
    icosphere(1, 3, 1);
    glPopMatrix();
 
    glPushMatrix();
-   glTranslatef(0,0,1);
+   glTranslatef(0,0,2);
    glRotatef(-90, 1, 0, 0);
    icosphere(1, 3, 1);
    glPopMatrix();
 
    glPushMatrix();
-   glTranslatef(0,0,-1);
+   glTranslatef(0,0,-2);
    glRotatef(90, 1, 0, 0);
    icosphere(1, 3, 1);
    glPopMatrix();
 
    glPopMatrix();
-   
+
    //  White
    glColor3f(1,1,1);
    //  Draw axes
-   if (axes)
-   {
-      glBegin(GL_LINES);
-      glVertex3d(0.0,0.0,0.0);
-      glVertex3d(len,0.0,0.0);
-      glVertex3d(0.0,0.0,0.0);
-      glVertex3d(0.0,len,0.0);
-      glVertex3d(0.0,0.0,0.0);
-      glVertex3d(0.0,0.0,len);
-      glEnd();
-      //  Label axes
-      glRasterPos3d(len,0.0,0.0);
-      Print("X");
-      glRasterPos3d(0.0,len,0.0);
-      Print("Y");
-      glRasterPos3d(0.0,0.0,len);
-      Print("Z");
-   }
+   glBegin(GL_LINES);
+   glVertex3d(0.0,0.0,0.0);
+   glVertex3d(len,0.0,0.0);
+   glVertex3d(0.0,0.0,0.0);
+   glVertex3d(0.0,len,0.0);
+   glVertex3d(0.0,0.0,0.0);
+   glVertex3d(0.0,0.0,len);
+   glEnd();
+   //  Label axes
+   glRasterPos3d(len,0.0,0.0);
+   Print("X");
+   glRasterPos3d(0.0,len,0.0);
+   Print("Y");
+   glRasterPos3d(0.0,0.0,len);
+   Print("Z");
    //  Five pixels from the lower left corner of the window
    glWindowPos2i(5,25);
    //  Print the text string
@@ -415,16 +410,34 @@ void special(int key,int x,int y)
 {
    //  Right arrow key - increase angle by 5 degrees
    if (key == GLUT_KEY_RIGHT)
+   {
       th += 5;
+      yaw += 1;
+   }
    //  Left arrow key - decrease angle by 5 degrees
    else if (key == GLUT_KEY_LEFT)
+   {
       th -= 5;
+      yaw -= 1;
+   }
    //  Up arrow key - increase elevation by 5 degrees
    else if (key == GLUT_KEY_UP)
+   {
       ph += 5;
+      if(pitch < 89)
+      {
+         pitch += 1;
+      }
+   }
    //  Down arrow key - decrease elevation by 5 degrees
    else if (key == GLUT_KEY_DOWN)
+   {
       ph -= 5;
+      if(pitch > -89)
+      {
+         pitch -= 1;
+      }
+   }
    //  Keep angles to +/-360 degrees
    th %= 360;
    ph %= 360;
@@ -434,13 +447,28 @@ void special(int key,int x,int y)
    glutPostRedisplay();
 }
 
-void matchViewAngle()
+/*
+ * Moves the user through space horizontally with foward as the default direction
+ */
+void moveHorizontal(double offsetYaw)
 {
-   yaw = th;
-   pitch = ph;
-   posX = 2*dim*getX(th, ph);
-   posY = 2*dim*getY(th, ph);
-   posZ = 2*dim*getZ(th, ph);
+   double x = getX(yaw + offsetYaw, pitch);
+   double z = getZ(yaw + offsetYaw, pitch);
+   // Normalize the directions so that the pitch doesn't make the user go slower or faster
+   double magnitude = 1 / sqrt(x*x + z*z);
+   posX += x * magnitude * speed;
+   posZ += z * magnitude * speed;
+}
+
+/*
+ * Clamps the position so the user cannot escape my blobs
+ */
+void clampPosition()
+{
+   double maxDistance = dim * 0.4f; // Chosen so that no shapes are cut off by the far side of the clipping plane
+   posX = posX > maxDistance ? maxDistance : posX < -maxDistance ? -maxDistance : posX;
+   posY = posY > maxDistance ? maxDistance : posY < -maxDistance ? -maxDistance : posY;
+   posZ = posZ > maxDistance ? maxDistance : posZ < -maxDistance ? -maxDistance : posZ;
 }
 
 /*
@@ -454,21 +482,12 @@ void key(unsigned char ch,int x,int y)
    //  Reset view angle
    else if (ch == '0')
       th = ph = 0;
-   //  Toggle axes
-   else if (ch == 'a' || ch == 'A')
-      axes = 1-axes;
    //  Switch display mode
    else if (ch == 'm'){
       mode = (mode+1)%3;
-      if(mode == 2){
-         matchViewAngle();
-      }
    }
    else if (ch == 'M'){
       mode = (mode+1)%3;
-      if(mode == 2){
-         matchViewAngle();
-      }
    }
    //  Change field of view angle
    else if (ch == '-' && ch>1)
@@ -480,6 +499,32 @@ void key(unsigned char ch,int x,int y)
       dim += 0.1;
    else if (ch == 'x')
       dim -= 0.1;
+   else if (ch == 'w')
+   {
+      moveHorizontal(0);
+   }
+   else if (ch == 'a')
+   {
+      moveHorizontal(-90);
+   }
+   else if (ch == 's')
+   {
+      moveHorizontal(-180);
+   }
+   else if (ch == 'd')
+   {
+      moveHorizontal(90);
+   }
+   else if(ch == 'f')
+   {
+      posY -= speed;
+   }
+   else if (ch == ' ')
+   {
+      posY += speed;
+   }
+   // Keep the position in a certain area
+   clampPosition();
    //  Reproject
    Project();
    //  Tell GLUT it is necessary to redisplay the scene
@@ -507,7 +552,6 @@ void idle()
    zh = fmod(90*t,360);
    glutPostRedisplay();
 }
-
 /*
  *  Start up GLUT and tell it what to do
  */
