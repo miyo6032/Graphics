@@ -1,4 +1,4 @@
-EXE=hw3
+EXE=hw4
 
 # Main target
 all: $(EXE)
@@ -29,7 +29,7 @@ endif
 	g++ -c $(CFLG) $<
 
 #  Link
-hw3:hw3.o
+hw4:hw4.o
 	gcc -O3 -o $@ $^   $(LIBS)
 
 #  Clean
