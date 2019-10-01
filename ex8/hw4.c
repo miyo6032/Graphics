@@ -1,12 +1,16 @@
 /*
- *  Homework 3
+ *  Homework 4
  *
- *  Three scenes that show a complex object with different animations and transformations
+ *  A scene to show different perspectives and first person navigation
+ *
+ *  Key bindings for first person navigation:
+ *  wasd to move horizontally
+ *  f and space to move down and up
+ *  arrow keys to change perspective angles
  *
  *  Key bindings:
  *  m/M        Cycle through different sets of objects
  *  arrows     Change view angle
- *  z/x  Zoom in and out
  *  +/-        Changes field of view for perspective
  *  0          Reset view angle
  *  ESC        Exit
@@ -396,7 +400,8 @@ void display()
    //  Five pixels from the lower left corner of the window
    glWindowPos2i(5,25);
    //  Print the text string
-   // Print("Angle=%d,%d  Dim=%.1f FOV=%d Projection Mode=%d",th,ph,dim,fov,mode);
+   Print("Angle=%f %f",mode == 2 ? yaw : th, mode == 2 ? pitch : ph);
+   Print("FOV=%i Projection Mode=%i",fov,mode);
    //  Render the scene
    glFlush();
    //  Make the rendered scene visible
@@ -411,20 +416,27 @@ void special(int key,int x,int y)
    //  Right arrow key - increase angle by 5 degrees
    if (key == GLUT_KEY_RIGHT)
    {
-      th += 5;
-      yaw += 1;
+      if(mode != 2)
+         th += 5;
+      else
+         yaw += 1;
    }
    //  Left arrow key - decrease angle by 5 degrees
    else if (key == GLUT_KEY_LEFT)
    {
-      th -= 5;
-      yaw -= 1;
+      if(mode != 2)
+         th -= 5;
+      else
+         yaw -= 1;
    }
    //  Up arrow key - increase elevation by 5 degrees
    else if (key == GLUT_KEY_UP)
    {
-      ph += 5;
-      if(pitch < 89)
+      if(mode != 2)
+      {
+         ph += 5;
+      }
+      if(mode == 2 && pitch < 89)
       {
          pitch += 1;
       }
@@ -432,8 +444,11 @@ void special(int key,int x,int y)
    //  Down arrow key - decrease elevation by 5 degrees
    else if (key == GLUT_KEY_DOWN)
    {
-      ph -= 5;
-      if(pitch > -89)
+      if(mode != 2)
+      {
+         ph -= 5;
+      }
+      if(mode == 2 && pitch > -89)
       {
          pitch -= 1;
       }
@@ -481,7 +496,9 @@ void key(unsigned char ch,int x,int y)
       exit(0);
    //  Reset view angle
    else if (ch == '0')
-      th = ph = 0;
+   {
+      th = ph = yaw = pitch = posX = posY = posZ = 0;
+   }
    //  Switch display mode
    else if (ch == 'm'){
       mode = (mode+1)%3;
@@ -490,41 +507,39 @@ void key(unsigned char ch,int x,int y)
       mode = (mode+1)%3;
    }
    //  Change field of view angle
-   else if (ch == '-' && ch>1)
+   else if (ch == '-' && ch>1 && fov > 0)
       fov--;
-   else if (ch == '+' && ch<179)
+   else if (ch == '+' && ch<179 && fov < 180)
       fov++;
-   //  Change dimension
-   else if (ch == 'z')
-      dim += 0.1;
-   else if (ch == 'x')
-      dim -= 0.1;
-   else if (ch == 'w')
+   else if(mode == 2)
    {
-      moveHorizontal(0);
+      if (ch == 'w')
+      {
+         moveHorizontal(0);
+      }
+      else if (ch == 'a')
+      {
+         moveHorizontal(-90);
+      }
+      else if (ch == 's')
+      {
+         moveHorizontal(-180);
+      }
+      else if (ch == 'd')
+      {
+         moveHorizontal(90);
+      }
+      else if(ch == 'f')
+      {
+         posY -= speed;
+      }
+      else if (ch == ' ')
+      {
+         posY += speed;
+      }
+      // Keep the position in a certain area
+      clampPosition();
    }
-   else if (ch == 'a')
-   {
-      moveHorizontal(-90);
-   }
-   else if (ch == 's')
-   {
-      moveHorizontal(-180);
-   }
-   else if (ch == 'd')
-   {
-      moveHorizontal(90);
-   }
-   else if(ch == 'f')
-   {
-      posY -= speed;
-   }
-   else if (ch == ' ')
-   {
-      posY += speed;
-   }
-   // Keep the position in a certain area
-   clampPosition();
    //  Reproject
    Project();
    //  Tell GLUT it is necessary to redisplay the scene

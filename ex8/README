@@ -1,20 +1,26 @@
-HW3
+HW4
 
 Michael Yoshimura
 CSCI4229/5229 Fall 2019
 
-Contains three scenes showcasing the icosphere, an alternate way of drawing a sphere.
-The first scene shows an icosphere that can have the number of subdivision altered
-The second scene shows an animated blob using the icosphere as the base
-The third scenes put in some various transformations with multiple animated blobs
+Contains some objects which can be viewed with 3 different modes.
+First mode is orthagononal
+Second is overhead perspective
+Third is first person perspective
+  It is possible to clip though objects, but it shouldn't happen unless the user
+  is very close to the object. Also, there is a limit on where the user can go.
+  The maximum angle a user can look up or down is 90 degrees.
+  
+Key bindings for first person navigation:
+  wasd       Move horizontally
+  f/spacebar Move down and up
+  arrows     Change perspective angles
 
 Key bindings
   m/M        Cycle through different sets of objects
-  a          Toggle axes
   arrows     Change view angle
   0          Reset view angle
-  w          Increase the number of subdivisions for objects in mode 0 and 1
-  s          Decrease the number of subdivision for objects in more 0 and 1
+  +/-        Changes field of view for perspective
   ESC        Exit
 
 Time taken: 8 hours
