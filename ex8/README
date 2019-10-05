@@ -9,8 +9,8 @@ Second is overhead perspective
 Third is first person perspective
   It is possible to clip though objects, but it shouldn't happen unless the user
   is very close to the object. Also, there is a limit on where the user can go.
-  The maximum angle a user can look up or down is 90 degrees.
-  
+  The maximum angle a user can look up or down is 89 degrees.
+
 Key bindings for first person navigation:
   wasd       Move horizontally
   f/spacebar Move down and up
@@ -23,4 +23,4 @@ Key bindings
   +/-        Changes field of view for perspective
   ESC        Exit
 
-Time taken: 8 hours
+Time taken: 5 hours

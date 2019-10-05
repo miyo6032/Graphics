@@ -401,7 +401,7 @@ void display()
    glWindowPos2i(5,25);
    //  Print the text string
    Print("Angle=%f %f",mode == 2 ? yaw : th, mode == 2 ? pitch : ph);
-   Print("FOV=%i Projection Mode=%i",fov,mode);
+   Print(" FOV=%i Projection Mode=%i",fov,mode);
    //  Render the scene
    glFlush();
    //  Make the rendered scene visible
