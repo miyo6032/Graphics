@@ -90,6 +90,20 @@ void crossProduct(const float v1[3], const float v2[3], float newV[3])
    newV[2] = v1[0] * v2[1] - v1[1] * v2[0];
 }
 
+void elementWiseAdd(const float v1[3], float v2[3], float newV[3])
+{
+   newV[0] = v2[0] + v1[0];
+   newV[1] = v2[1] + v1[1];
+   newV[2] = v2[2] + v1[2];
+}
+
+void elementWiseSubtract(const float v2[3], float v1[3], float newV[3])
+{
+   newV[0] = v2[0] - v1[0];
+   newV[1] = v2[1] - v1[1];
+   newV[2] = v2[2] - v1[2];
+}
+
 /*
  * A function that returns interesting magnitudes to make the sphere into an animated blob
  */
@@ -110,6 +124,9 @@ static void icosphere(float s, int subdivision, int animation)
 {
    //  Vertex index list
    int numIndices=60;
+   int numVertices=12;
+   int numTriangles=20;
+   int numAdjVertices = 5;
    const unsigned char icoIndices[] =
       {
        2, 1, 0,    3, 2, 0,    4, 3, 0,    5, 4, 0,    1, 5, 0,
@@ -145,6 +162,13 @@ static void icosphere(float s, int subdivision, int animation)
    float newV1[3], newV2[3], newV3[3]; // new vertex positions
    int * indices = malloc(numIndices * sizeof(int));
    float * vertices = malloc(numIndices * 3 * sizeof(float));
+   
+   // Define a data structure to store what triangles each vertex is a part of
+   // 5 edges for each adjacent vertex
+   // More specifically, it stores the index at which related triangles are located at
+   int adjTriangleSize = numVertices * numAdjVertices;
+   int * vertexTriangleMap = malloc(adjTriangleSize * sizeof(int));
+   int * temp_counts = calloc(numVertices, sizeof(int));
 
    // Orders the indices
    for(int i = 0; i < numIndices; i++)
@@ -157,6 +181,29 @@ static void icosphere(float s, int subdivision, int animation)
    {
       vertices[i] = icoVertices[i];
    }
+
+   // Add all of the edges in between
+   // Increase by three because that is per known triangle
+   for(int i = 0; i < numTriangles; i++)
+   {
+      // A triangle is specified by three indices in the index array
+      int triangle_address = i * 3;
+      int v1 = indices[triangle_address];
+      int v2 = indices[triangle_address + 1];
+      int v3 = indices[triangle_address + 2];
+
+      // This is indexing by rows of 5 + the next empty temp spot
+      vertexTriangleMap[v1 * numAdjVertices + temp_counts[v1]] = triangle_address;
+      vertexTriangleMap[v2 * numAdjVertices + temp_counts[v2]] = triangle_address;
+      vertexTriangleMap[v3 * numAdjVertices + temp_counts[v3]] = triangle_address;
+
+      // OUr jenky way of mimicing a list
+      temp_counts[v1]++;
+      temp_counts[v2]++;
+      temp_counts[v3]++;
+   }
+
+   free(temp_counts);
 
    // Subdivision algorithm
    for(int i = 1; i <= subdivision; i++){
@@ -216,7 +263,57 @@ static void icosphere(float s, int subdivision, int animation)
       }
    }
 
-   glNormalPointer(GL_FLOAT, 0, vertices);
+   // Our fancy gourand shading
+   float * normals = malloc(numIndices * sizeof(float)); // Multiply by 3 because needs 3 coords to specify a single vertex
+   for (int i = 0; i < numVertices; i++)
+   {
+      int normal_address = i * 3;
+      // Sum together all cross product vectors
+      float * temp_vec = malloc(3 * sizeof(float));
+      for(int j = 0; j < numAdjVertices; j++)
+      {
+         // Give the row and then j for the column to get the triangle associated with the vertex
+         int triangleAddress = vertexTriangleMap[i * numAdjVertices + j];
+
+         float * cross_v1 = malloc(3 * sizeof(float));
+         float * cross_v2 = malloc(3 * sizeof(float));
+
+         // Using the triangle, we can locate the indices and hence the vertices for the triangle to use
+         float * v1 = &vertices[indices[triangleAddress] * 3];
+         float * v2 = &vertices[indices[triangleAddress + 1] * 3];
+         float * v3 = &vertices[indices[triangleAddress + 2] * 3];
+
+         // Subtract vectors to get the actual vectors we need for the cross product
+         elementWiseSubtract(v2, v1, cross_v1);
+         elementWiseSubtract(v3, v2, cross_v2);
+
+         crossProduct(cross_v2, cross_v1, temp_vec);
+         glBegin(GL_LINE_STRIP);
+         glVertex3f(v1[0], v1[1], v1[2]);
+         glVertex3f(v2[0], v2[1], v2[2]);
+         glVertex3f(v3[0], v3[1], v3[2]);
+         glEnd();
+         elementWiseAdd(temp_vec, &normals[normal_address], &normals[normal_address]);
+         free(cross_v2);
+         free(cross_v1);
+      }
+      // printf("%f, %f, %f \n", normals[normal_address], normals[normal_address + 1], normals[normal_address + 2]);
+      free(temp_vec);
+      rescale(1, &normals[normal_address]);
+
+      // Draw Normals
+      glBegin(GL_LINE_STRIP);
+      glVertex3f(vertices[normal_address], vertices[normal_address + 1], vertices[normal_address + 2]);
+      temp_vec = malloc(3 * sizeof(float));
+      elementWiseAdd(&vertices[normal_address], &normals[normal_address], temp_vec);
+      glVertex3f(temp_vec[0], temp_vec[1], temp_vec[2]);
+      free(temp_vec);
+      // printf("%f, %f, %f \n", normals[i], normals[i + 1], normals[i + 2]);
+      glEnd();
+   }
+
+
+   glNormalPointer(GL_FLOAT, 0, normals);
    glEnableClientState(GL_NORMAL_ARRAY);
    //  Define vertexes
    glVertexPointer(3, GL_FLOAT, 0, vertices);
@@ -234,21 +331,13 @@ static void icosphere(float s, int subdivision, int animation)
    glDisableClientState(GL_VERTEX_ARRAY);
    //  Disable color array
    glDisableClientState(GL_COLOR_ARRAY);
+   // exit(0);
+   free(normals);
+   free(rgb);
+   free(vertexTriangleMap);
    free(vertices);
    free(indices);
-   free(rgb);
    glDisable(GL_LIGHTING);
-   float * normals = malloc(numIndices * 3 * sizeof(float)); // Multiply by 3 because needs 3 coords to specify a single vertex
-   for (int i = 0; i < numIndices * 3; i+=9)
-   {
-      // crossProduct(&vertices[i], &vertices[i + 3], &normals[i]);
-      // glBegin(GL_LINE_STRIP);
-      // glVertex3f(vertices[i], vertices[i + 1], vertices[i + 2]);
-      // glVertex3f(vertices[i + 3], vertices[i + 4], vertices[i + 5]);
-      // glVertex3f(vertices[i + 6], vertices[i + 7], vertices[i + 8]);
-      // glEnd();
-   }
-   free(normals);
 }
 
 /*
