@@ -164,7 +164,7 @@ int subdivide(struct Vertex * vertices, struct Triangle * triangles, struct Vert
    int numOldTriangles = numNewTriangles / 4;
    // Initialize lookup which maps between
    // two vertices to the midpoint of that vertex
-   int ** lookup = malloc(numNewVertices * sizeof(int));
+   int ** lookup = malloc(numNewVertices * sizeof(int*));
    for(int i = 0; i < numNewVertices; i++)
    {
       int * row = malloc(numNewVertices * sizeof(int));
