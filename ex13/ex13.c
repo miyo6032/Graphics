@@ -1,7 +1,12 @@
 /*
  *  Lighting
  *
- *  Demonstrates basic lighting using a sphere and a cube.
+ *  Demonstrates Gourand shading of a blob (which is originally an isosphere)
+ *
+ *  CUSTOM CONTROLS:
+ *  
+ *  c          Toggles whether normals are drawn on the object
+ *  v          Change number of subvisions of the object
  *
  *  Key bindings:
  *  l          Toggles lighting
@@ -13,8 +18,6 @@
  *  F1         Toggle smooth/flat shading
  *  F2         Toggle local viewer mode
  *  F3         Toggle light distance (1/5)
- *  F8         Change ball increment
- *  F9         Invert bottom normal
  *  m          Toggles light movement
  *  []         Lower/rise light
  *  p          Toggles ortogonal/perspective projection
@@ -24,6 +27,11 @@
  *  1/2        Zoom in and out
  *  0          Reset view angle
  *  ESC        Exit
+ *
+ * CREDIT: https://schneide.blog/2016/07/15/generating-an-icosphere-in-c/
+ * Walked me though a different isosphere implementation that doens't duplicate its vertices
+ * Because trying to calulate the lighting with gourad shading with 6 different vertices as the same
+ * vertex is extremely mindbending
  */
 #include "CSCIx229.h"
 
@@ -51,65 +59,167 @@ float shiny   =   1;  // Shininess (value)
 int zh        =  90;  // Light azimuth
 float ylight  =   0;  // Elevation of light
 
-void addVertices(float *vertices, int j, const float v1[3], const float v2[3], const float v3[3])
-{
-   vertices[j] = v1[0];
-   vertices[j + 1] = v1[1];
-   vertices[j + 2] = v1[2];
-   vertices[j + 3] = v2[0];
-   vertices[j + 4] = v2[1];
-   vertices[j + 5] = v2[2];   
-   vertices[j + 6] = v3[0];
-   vertices[j + 7] = v3[1];
-   vertices[j + 8] = v3[2];
-}
+// Other globals
+int showNormals = 0;
+int subdivisions = 4;
 
-void rescale(float radius, float v[3])
+// Moved to a vertex because using float[3] everywhere hurt my brain
+struct Vertex
 {
-    float scale = radius / sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
-    v[0] *= scale;
-    v[1] *= scale;
-    v[2] *= scale;
+   float x;
+   float y;
+   float z;
+};
+
+struct Triangle
+{
+   int vertices[3];
+};
+
+void rescale(float radius, struct Vertex * v)
+{
+    float scale = radius / sqrt(v->x*v->x + v->y*v->y + v->z*v->z);
+    v->x *= scale;
+    v->y *= scale;
+    v->z *= scale;
 }
 
 // find middle point of 2 vertices
 // NOTE: new vertex must be resized, so the length is equal to the radius
 // from http://www.songho.ca/opengl/gl_sphere.html
-void computeHalfVertex(const float v1[3], const float v2[3], float newV[3])
+void crossProduct(struct Vertex v1, struct Vertex v2, struct Vertex * newV)
 {
-    newV[0] = v1[0] + v2[0];    // x
-    newV[1] = v1[1] + v2[1];    // y
-    newV[2] = v1[2] + v2[2];    // z
-    rescale(1, newV);
+   newV->x = v1.y * v2.z - v1.z * v2.y;
+   newV->y = v1.z * v2.x - v1.x * v2.z;
+   newV->z = v1.x * v2.y - v1.y * v2.x;
 }
 
-void crossProduct(const float v1[3], const float v2[3], float newV[3])
+void elementWiseAdd(struct Vertex v1, struct Vertex v2, struct Vertex * newV)
 {
-   newV[0] = v1[1] * v2[2] - v1[2] * v2[1];
-   newV[1] = v1[2] * v2[0] - v1[0] * v2[2];
-   newV[2] = v1[0] * v2[1] - v1[1] * v2[0];
+   newV->x = v1.x + v2.x;
+   newV->y = v1.y + v2.y;
+   newV->z = v1.z + v2.z;
 }
 
-void elementWiseAdd(const float v1[3], float v2[3], float newV[3])
+void elementWiseSubtract(struct Vertex v1, struct Vertex v2, struct Vertex * newV)
 {
-   newV[0] = v2[0] + v1[0];
-   newV[1] = v2[1] + v1[1];
-   newV[2] = v2[2] + v1[2];
+   newV->x = v2.x - v1.x;
+   newV->y = v2.y - v1.y;
+   newV->z = v2.z - v1.z;
 }
 
-void elementWiseSubtract(const float v2[3], float v1[3], float newV[3])
+void computeHalfVertex(struct Vertex v1, struct Vertex v2, struct Vertex * newV)
 {
-   newV[0] = v2[0] - v1[0];
-   newV[1] = v2[1] - v1[1];
-   newV[2] = v2[2] - v1[2];
+   elementWiseAdd(v1, v2, newV);
+   rescale(1, newV);
 }
 
 /*
  * A function that returns interesting magnitudes to make the sphere into an animated blob
  */
-float wave(const float v[3])
+float wave(struct Vertex v)
 {
-   return ((1.1 + sin(v[1]) * cos(v[2] * 2) * Sin(zh)) * 0.4);
+   return ((1.1 + sin(v.y) * cos(v.z * 2) * Sin(zh)) * 0.4);
+}
+
+/*
+ * Returns the index of the vertex in the vertices array if that vertex already has been created,
+ * otherwise creates that vertex, puts it in the vertices array, and return the index that it is stored at
+ */
+int getMidEdgeVertex(int vertex1, int vertex2, int ** vertexLookup, struct Vertex * vertices, int * verticesFilled)
+{
+   if(vertex1 == vertex2)
+   {
+      printf("lookup vertices are the same!");
+      exit(1);
+   }
+   // Swap to make sure smaller vertex is first because
+   // vertices specified the other way around should return the same vertex
+   if(vertex1 > vertex2)
+   {
+      int t = vertex1;
+      vertex1 = vertex2;
+      vertex2 = t;
+   }
+
+   // If the vertex has already been created, then return
+   if(vertexLookup[vertex1][vertex2] != -1)
+   {
+      return vertexLookup[vertex1][vertex2];
+   }
+
+   // Create the vertex, add it to the lookup, and increase the verticesFilled
+   computeHalfVertex(vertices[vertex1], vertices[vertex2], &vertices[*verticesFilled]);
+   vertexLookup[vertex1][vertex2] = *verticesFilled;
+   (*verticesFilled)++; // Increment because we just added a new vertex (Why does C not have lists :( )
+   return vertexLookup[vertex1][vertex2];
+}
+
+/*
+ * Subdivides all triangles into four more triangles, creating a sphere at high enough subdivisons.
+ * Sourced from https://schneide.blog/2016/07/15/generating-an-icosphere-in-c/
+ */
+int subdivide(struct Vertex * vertices, struct Triangle * triangles, struct Vertex * newVertices, struct Triangle * newTriangles, int numOldVertices, int numNewTriangles, int numNewVertices)
+{
+   int numOldTriangles = numNewTriangles / 4;
+   // Initialize lookup which maps between
+   // two vertices to the midpoint of that vertex
+   int ** lookup = malloc(numNewVertices * sizeof(int));
+   for(int i = 0; i < numNewVertices; i++)
+   {
+      int * row = malloc(numNewVertices * sizeof(int));
+      for(int j = 0; j < numNewVertices; j++)
+      {
+         row[j] = -1;
+      }
+      lookup[i] = row;
+   }
+
+   // Copy the existing vertices to the new vertices
+   for(int i = 0; i < numOldVertices; i++)
+   {
+      newVertices[i] = vertices[i];
+   }
+
+   int trianglesFilled = 0;
+   int verticesFilled = numOldVertices;
+
+   // For each triangle, subdivide it
+   for(int t = 0; t < numOldTriangles; t++)
+   {
+      int mid[3];
+      for(int i = 0; i < 3; ++i)
+      {
+         mid[i] = getMidEdgeVertex(triangles[t].vertices[i], triangles[t].vertices[(i + 1) % 3], lookup, newVertices, &verticesFilled);
+      }
+
+      // Record the new triangles
+      newTriangles[trianglesFilled].vertices[0] = triangles[t].vertices[0];
+      newTriangles[trianglesFilled].vertices[1] = mid[0];
+      newTriangles[trianglesFilled].vertices[2] = mid[2];
+
+      newTriangles[trianglesFilled + 1].vertices[0] = triangles[t].vertices[1];
+      newTriangles[trianglesFilled + 1].vertices[1] = mid[1];
+      newTriangles[trianglesFilled + 1].vertices[2] = mid[0];
+
+      newTriangles[trianglesFilled + 2].vertices[0] = triangles[t].vertices[2];
+      newTriangles[trianglesFilled + 2].vertices[1] = mid[2];
+      newTriangles[trianglesFilled + 2].vertices[2] = mid[1];
+
+      newTriangles[trianglesFilled + 3].vertices[0] = mid[0];
+      newTriangles[trianglesFilled + 3].vertices[1] = mid[1];
+      newTriangles[trianglesFilled + 3].vertices[2] = mid[2];
+
+      trianglesFilled += 4;
+   }
+
+   for(int j = 0; j < numNewVertices; j++)
+   {
+     free(lookup[j]);
+   }
+   free(lookup);
+
+   return verticesFilled;
 }
 
 /*
@@ -117,17 +227,16 @@ float wave(const float v[3])
  *     size
  *     subivisions: number of times to divide the triangles from an icosahedron
  *     animation: 1 if play a weird blobby animation
- *
- * CREDIT: Isophere code largely sourced from http://www.songho.ca/opengl/gl_sphere.html
+ *     showNOrmals to display the normals as lines
  */
-static void icosphere(float s, int subdivision, int animation)
+static void icosphere(float s, int subdivision, int animation, int showNormals)
 {
    //  Vertex index list
    int numIndices=60;
    int numVertices=12;
    int numTriangles=20;
-   int numAdjVertices = 5;
-   const unsigned char icoIndices[] =
+
+   unsigned char indices[] =
       {
        2, 1, 0,    3, 2, 0,    4, 3, 0,    5, 4, 0,    1, 5, 0,
       11, 6, 7,   11, 7, 8,   11, 8, 9,   11, 9,10,   11,10, 6,
@@ -152,171 +261,139 @@ static void icosphere(float s, int subdivision, int animation)
        0.000, 0.000,-1.000
       };
 
-   /*
-    * We define temporary indices and vertices so that we can use them dynamically as the number of triangles increases
-    * with every subdivision. 
-    */
-   float *v1, *v2, *v3;
-   float * tempVertices;
-   int * tempIndices;
-   float newV1[3], newV2[3], newV3[3]; // new vertex positions
-   int * indices = malloc(numIndices * sizeof(int));
-   float * vertices = malloc(numIndices * 3 * sizeof(float));
-   
-   // Define a data structure to store what triangles each vertex is a part of
-   // 5 edges for each adjacent vertex
-   // More specifically, it stores the index at which related triangles are located at
-   int adjTriangleSize = numVertices * numAdjVertices;
-   int * vertexTriangleMap = malloc(adjTriangleSize * sizeof(int));
-   int * temp_counts = calloc(numVertices, sizeof(int));
-
-   // Orders the indices
-   for(int i = 0; i < numIndices; i++)
+   // Convert the initial vertices into a Vertex[] structure array
+   struct Vertex * vertices = malloc(numVertices * sizeof(struct Vertex));
+   for(int i = 0; i < numVertices; i++)
    {
-      indices[i] = icoIndices[i];
+      vertices[i].x = icoVertices[i * 3];
+      vertices[i].y = icoVertices[i * 3 + 1];
+      vertices[i].z = icoVertices[i * 3 + 2];      
    }
 
-   // Order the vertices so that the they can be rendered as triangles in order
-   for(int i = 0; i < 12 * 3; i++)
-   {
-      vertices[i] = icoVertices[i];
-   }
-
-   // Add all of the edges in between
-   // Increase by three because that is per known triangle
+   // Convert the indices into a Triangle[] structure array
+   struct Triangle * triangles = malloc(numTriangles * sizeof(struct Triangle));
    for(int i = 0; i < numTriangles; i++)
    {
-      // A triangle is specified by three indices in the index array
-      int triangle_address = i * 3;
-      int v1 = indices[triangle_address];
-      int v2 = indices[triangle_address + 1];
-      int v3 = indices[triangle_address + 2];
-
-      // This is indexing by rows of 5 + the next empty temp spot
-      vertexTriangleMap[v1 * numAdjVertices + temp_counts[v1]] = triangle_address;
-      vertexTriangleMap[v2 * numAdjVertices + temp_counts[v2]] = triangle_address;
-      vertexTriangleMap[v3 * numAdjVertices + temp_counts[v3]] = triangle_address;
-
-      // OUr jenky way of mimicing a list
-      temp_counts[v1]++;
-      temp_counts[v2]++;
-      temp_counts[v3]++;
+      triangles[i].vertices[0] = indices[i * 3];
+      triangles[i].vertices[1] = indices[i * 3 + 1];
+      triangles[i].vertices[2] = indices[i * 3 + 2];
    }
 
-   free(temp_counts);
-
-   // Subdivision algorithm
-   for(int i = 1; i <= subdivision; i++){
-
-      // Subdivides every triangle into 4 new triangles, so allocate 4 times the previous number of indices
-      int newIndices = numIndices * 4;
-      tempIndices = malloc(newIndices * sizeof(int));
-      tempVertices = malloc(newIndices * 3 * sizeof(float)); // Multiply by 3 because needs 3 coords to specify a single vertex
-
-      // Just order the indices in order
-      for (int j = 0; j < newIndices; j++)
-      {
-         tempIndices[j] = j;
-      }
-
-      for (int j = 0; j < numIndices; j+=3)
-      {
-         // get 3 vertices of an existing triangle
-         v1 = &vertices[indices[j] * 3];
-         v2 = &vertices[indices[j + 1] * 3];
-         v3 = &vertices[indices[j + 2] * 3];
-
-         // To the halfway points in between the three edges of the triangle and get the vertex at that point
-         computeHalfVertex(v1, v2, newV1);
-         computeHalfVertex(v2, v3, newV2);
-         computeHalfVertex(v1, v3, newV3);
-
-         // Adds three new vertices for each one of the four triangles created from subdiving the large triangle
-         // Obviously this is inefficient because we really only needs 6 vertices instead of 12, but whatever, it works
-         // with no major performance problems
-         int vertexStart = j * 3 * 4;
-         addVertices(tempVertices, vertexStart, v1, newV1, newV3);
-         addVertices(tempVertices, vertexStart + 9, newV1, v2, newV2);
-         addVertices(tempVertices, vertexStart + 18, newV1, newV2, newV3);
-         addVertices(tempVertices, vertexStart + 27, newV3, newV2, v3);
-      }
+   // Does the subdivisions
+   for(int division = 1; division <= subdivision; division++)
+   {
+      // Every triangle gets subivided into 4 more triangles, so everything is multiplied by 4 for each subdivision
+      numTriangles *= 4;
+      numIndices *= 4;
+      int estimatedVertices = numVertices * 4; // Because I can't find the equation for this lol so I have to estimate
+      struct Vertex * newVertices = malloc(estimatedVertices * sizeof(struct Vertex));
+      struct Triangle * newTriangles = malloc(numTriangles * sizeof(struct Triangle));
+      
+      numVertices = subdivide(vertices, triangles, newVertices, newTriangles, numVertices, numTriangles, estimatedVertices);
 
       free(vertices);
-      free(indices);
-      vertices = tempVertices;
-      indices = tempIndices;
-      numIndices = newIndices;
+      free(triangles);
+      vertices = newVertices;
+      triangles = newTriangles;
    }
 
-   // Basic rbg algorithm
-   float * rgb = malloc(numIndices * 3 * sizeof(float));
-   for (int i = 0; i < numIndices * 3; i++)
+   float * convertedVertices = malloc(numVertices * 3 * sizeof(float));
+   int * convertedIndices = malloc(numIndices * sizeof(int));
+
+   if(animation)
    {
-      rgb[i] = 0.3;
-   }
-
-   // Animation done by rescaling the vertices based on the position of each vertex
-   if(animation){
-      for (int i = 0; i < numIndices * 3; i+=3)
-      {
-         rescale(wave(&vertices[i]), &vertices[i]);
+      for(int i = 0; i < numVertices; i++){
+         rescale(wave(vertices[i]), &vertices[i]);
       }
    }
 
-   // Our fancy gourand shading
-   float * normals = malloc(numIndices * sizeof(float)); // Multiply by 3 because needs 3 coords to specify a single vertex
-   for (int i = 0; i < numVertices; i++)
+   // Convert back from structre into flat lists to be used by OpenGL
+   for(int i = 0; i < numVertices; i++)
    {
-      int normal_address = i * 3;
-      // Sum together all cross product vectors
-      float * temp_vec = malloc(3 * sizeof(float));
-      for(int j = 0; j < numAdjVertices; j++)
+      convertedVertices[i * 3] = vertices[i].x;
+      convertedVertices[i * 3 + 1] = vertices[i].y;
+      convertedVertices[i * 3 + 2] = vertices[i].z;
+   }
+
+   for(int i = 0; i < numTriangles; i++)
+   {
+      convertedIndices[i * 3] = triangles[i].vertices[0];
+      convertedIndices[i * 3 + 1] = triangles[i].vertices[1];
+      convertedIndices[i * 3 + 2] = triangles[i].vertices[2];
+   }
+
+   // Calculate DA Normals using the legendary Gouraud method
+   struct Vertex * normals = calloc(numVertices, sizeof(struct Vertex));
+   for(int t = 0; t < numTriangles; t++)
+   {
+      int v1 = triangles[t].vertices[0];
+      int v2 = triangles[t].vertices[1];
+      int v3 = triangles[t].vertices[2];
+
+      struct Vertex toCross1;
+      struct Vertex toCross2;
+      struct Vertex cross;
+
+      // Calculate the two vectors between the three points on the triangle
+      elementWiseSubtract(vertices[v2], vertices[v1], &toCross1);
+      elementWiseSubtract(vertices[v3], vertices[v2], &toCross2);
+
+      // Cross to get the face vector
+      crossProduct(toCross2, toCross1, &cross);
+
+      // Add the face vector to all the vertices normals that are part of the triangle
+      elementWiseAdd(cross, normals[v1], &normals[v1]);
+      elementWiseAdd(cross, normals[v2], &normals[v2]);
+      elementWiseAdd(cross, normals[v3], &normals[v3]);
+   }
+
+   float * convertedNormals = malloc(numVertices * 3 * sizeof(struct Vertex));
+   for(int i = 0; i < numVertices; i++)
+   {
+      convertedNormals[i * 3] = normals[i].x;
+      convertedNormals[i * 3 + 1] = normals[i].y;
+      convertedNormals[i * 3 + 2] = normals[i].z;
+
+
+      if(showNormals)
       {
-         // Give the row and then j for the column to get the triangle associated with the vertex
-         int triangleAddress = vertexTriangleMap[i * numAdjVertices + j];
+         glDisable(GL_LIGHTING);
 
-         float * cross_v1 = malloc(3 * sizeof(float));
-         float * cross_v2 = malloc(3 * sizeof(float));
+         // Add the normal to the current vertex to display nicely
+         struct Vertex displayNormal;
+         rescale(0.05, &normals[i]);
+         elementWiseAdd(vertices[i], normals[i], &displayNormal);
 
-         // Using the triangle, we can locate the indices and hence the vertices for the triangle to use
-         float * v1 = &vertices[indices[triangleAddress] * 3];
-         float * v2 = &vertices[indices[triangleAddress + 1] * 3];
-         float * v3 = &vertices[indices[triangleAddress + 2] * 3];
+         glPushMatrix();
+         glScalef(s, s, s);
 
-         // Subtract vectors to get the actual vectors we need for the cross product
-         elementWiseSubtract(v2, v1, cross_v1);
-         elementWiseSubtract(v3, v2, cross_v2);
-
-         crossProduct(cross_v2, cross_v1, temp_vec);
+         // Line strip from the vertex to the caluclated vertex
          glBegin(GL_LINE_STRIP);
-         glVertex3f(v1[0], v1[1], v1[2]);
-         glVertex3f(v2[0], v2[1], v2[2]);
-         glVertex3f(v3[0], v3[1], v3[2]);
+         glVertex3f(vertices[i].x, vertices[i].y, vertices[i].z);
+         glVertex3f(displayNormal.x, displayNormal.y, displayNormal.z);
          glEnd();
-         elementWiseAdd(temp_vec, &normals[normal_address], &normals[normal_address]);
-         free(cross_v2);
-         free(cross_v1);
+         glPopMatrix();
+         glEnable(GL_LIGHTING);
       }
-      // printf("%f, %f, %f \n", normals[normal_address], normals[normal_address + 1], normals[normal_address + 2]);
-      free(temp_vec);
-      rescale(1, &normals[normal_address]);
-
-      // Draw Normals
-      glBegin(GL_LINE_STRIP);
-      glVertex3f(vertices[normal_address], vertices[normal_address + 1], vertices[normal_address + 2]);
-      temp_vec = malloc(3 * sizeof(float));
-      elementWiseAdd(&vertices[normal_address], &normals[normal_address], temp_vec);
-      glVertex3f(temp_vec[0], temp_vec[1], temp_vec[2]);
-      free(temp_vec);
-      // printf("%f, %f, %f \n", normals[i], normals[i + 1], normals[i + 2]);
-      glEnd();
    }
 
+   // Color the object blue
+   float * rgb = malloc(numIndices * 3 * sizeof(float));
+   for(int i = 0; i < numIndices; i+=3)
+   {
+      rgb[i] = 0.5;
+      rgb[i + 1] = 0.5;
+      rgb[i + 2] = 0.9;
+   }
+   
+   free(normals);
+   free(vertices);
+   free(triangles);
 
-   glNormalPointer(GL_FLOAT, 0, normals);
+   glNormalPointer(GL_FLOAT, 0, convertedNormals);
    glEnableClientState(GL_NORMAL_ARRAY);
    //  Define vertexes
-   glVertexPointer(3, GL_FLOAT, 0, vertices);
+   glVertexPointer(3, GL_FLOAT, 0, convertedVertices);
    glEnableClientState(GL_VERTEX_ARRAY);
    //  Define colors for each vertex
    glColorPointer(3,GL_FLOAT,0,rgb);
@@ -324,92 +401,18 @@ static void icosphere(float s, int subdivision, int animation)
    //  Draw icosahedron
    glPushMatrix();
    glScalef(s, s, s);
-   glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, indices);
+   glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, convertedIndices);
    glPopMatrix();
    glDisableClientState(GL_NORMAL_ARRAY);
    //  Disable vertex array
    glDisableClientState(GL_VERTEX_ARRAY);
    //  Disable color array
    glDisableClientState(GL_COLOR_ARRAY);
-   // exit(0);
-   free(normals);
-   free(rgb);
-   free(vertexTriangleMap);
-   free(vertices);
-   free(indices);
-   glDisable(GL_LIGHTING);
-}
 
-/*
- *  Draw a cube
- *     at (x,y,z)
- *     dimensions (dx,dy,dz)
- *     rotated th about the y axis
- */
-static void cube(double x,double y,double z,
-                 double dx,double dy,double dz,
-                 double th)
-{
-   //  Set specular color to white
-   float white[] = {1,1,1,1};
-   float black[] = {0,0,0,1};
-   glMaterialf(GL_FRONT_AND_BACK,GL_SHININESS,shiny);
-   glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,white);
-   glMaterialfv(GL_FRONT_AND_BACK,GL_EMISSION,black);
-   //  Save transformation
-   glPushMatrix();
-   //  Offset, scale and rotate
-   glTranslated(x,y,z);
-   glRotated(th,0,1,0);
-   glScaled(dx,dy,dz);
-   //  Cube
-   glBegin(GL_QUADS);
-   //  Front
-   glColor3f(1,0,0);
-   glNormal3f( 0, 0, 1);
-   glVertex3f(-1,-1, 1);
-   glVertex3f(+1,-1, 1);
-   glVertex3f(+1,+1, 1);
-   glVertex3f(-1,+1, 1);
-   //  Back
-   glColor3f(0,0,1);
-   glNormal3f( 0, 0,-1);
-   glVertex3f(+1,-1,-1);
-   glVertex3f(-1,-1,-1);
-   glVertex3f(-1,+1,-1);
-   glVertex3f(+1,+1,-1);
-   //  Right
-   glColor3f(1,1,0);
-   glNormal3f(+1, 0, 0);
-   glVertex3f(+1,-1,+1);
-   glVertex3f(+1,-1,-1);
-   glVertex3f(+1,+1,-1);
-   glVertex3f(+1,+1,+1);
-   //  Left
-   glColor3f(0,1,0);
-   glNormal3f(-1, 0, 0);
-   glVertex3f(-1,-1,-1);
-   glVertex3f(-1,-1,+1);
-   glVertex3f(-1,+1,+1);
-   glVertex3f(-1,+1,-1);
-   //  Top
-   glColor3f(0,1,1);
-   glNormal3f( 0,+1, 0);
-   glVertex3f(-1,+1,+1);
-   glVertex3f(+1,+1,+1);
-   glVertex3f(+1,+1,-1);
-   glVertex3f(-1,+1,-1);
-   //  Bottom
-   glColor3f(1,0,1);
-   glNormal3f( 0,-one, 0);
-   glVertex3f(-1,-1,-1);
-   glVertex3f(+1,-1,-1);
-   glVertex3f(+1,-1,+1);
-   glVertex3f(-1,-1,+1);
-   //  End
-   glEnd();
-   //  Undo transofrmations
-   glPopMatrix();
+   free(rgb);
+   free(convertedNormals);
+   free(convertedVertices);
+   free(convertedIndices);
 }
 
 /*
@@ -523,10 +526,10 @@ void display()
    }
    else
       glDisable(GL_LIGHTING);
-
+ 
    //  Draw scene
    glPushMatrix();
-   icosphere(0.9, 0, 1);
+   icosphere(2, subdivisions, 1, showNormals);
    glPopMatrix();
 
    //  Draw axes - no lighting from here on
@@ -562,6 +565,8 @@ void display()
       glWindowPos2i(5,25);
       Print("Ambient=%d  Diffuse=%d Specular=%d Emission=%d Shininess=%.0f",ambient,diffuse,specular,emission,shiny);
    }
+   glWindowPos2i(5, 65);
+   Print("Show Normals=%s, Subdivisions=%i", showNormals?"True":"False", subdivisions);
 
    //  Render the scene and make it visible
    ErrCheck("display");
@@ -684,6 +689,21 @@ void key(unsigned char ch,int x,int y)
       shininess -= 1;
    else if (ch=='N' && shininess<7)
       shininess += 1;
+   else if (ch=='c')
+   {
+      if(showNormals)
+      {
+         showNormals = 0;
+      }
+      else
+      {
+         showNormals = 1;
+      }
+   }
+   else if (ch=='v')
+   {
+      subdivisions = (subdivisions + 1) % 5;
+   }
    //  PageUp key - increase dim
    else if (ch == '1')
       dim += 0.1;
