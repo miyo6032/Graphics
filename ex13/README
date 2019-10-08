@@ -1,9 +1,20 @@
-ex13: Lighting
+hw5: Lighting
 
-Willem A. (Vlakkies) Schreuder
+Michael Yoshimura
 CSCI4229/5229 Fall 2019
 
-Demonstrates basic lighting using a sphere and a cube.
+Demonstrates Gourand shading as explained in class on a non-convex isosphere.
+This is difficult because the normal method of shading a scaled sphere
+fails when the sphere is warped to the point where it is no longer convex.
+
+While this doesn't mimic reality perfectly (for example, one bump is not
+aware of the other bump in front of it. I assume raycasting is required for that), 
+it is better than the scaled sphere shading in that the normals all point in the 
+correct direction of the surface, and the shading looks natural.
+
+Custom Controls:
+  c          Toggles whether normals are drawn as lines on the object [Porcupine Mode]
+  v          Change number of subvisions of the object
 
 Key bindings
   l          Toggles lighting
@@ -15,8 +26,6 @@ Key bindings
   F1         Toggle smooth/flat shading
   F2         Toggle local viewer mode
   F3         Toggle light distance (1/5)
-  F8         Change ball increment
-  F9         Invert bottom normal
   m          Toggles light movement
   []         Lower/rise light
   p          Toggles ortogonal/perspective projection
@@ -26,3 +35,5 @@ Key bindings
   PgDn/PgUp  Zoom in and out
   0          Reset view angle
   ESC        Exit
+
+Time Taken: 14 hours lol

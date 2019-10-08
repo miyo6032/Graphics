@@ -84,9 +84,6 @@ void rescale(float radius, struct Vertex * v)
     v->z *= scale;
 }
 
-// find middle point of 2 vertices
-// NOTE: new vertex must be resized, so the length is equal to the radius
-// from http://www.songho.ca/opengl/gl_sphere.html
 void crossProduct(struct Vertex v1, struct Vertex v2, struct Vertex * newV)
 {
    newV->x = v1.y * v2.z - v1.z * v2.y;
@@ -108,6 +105,9 @@ void elementWiseSubtract(struct Vertex v1, struct Vertex v2, struct Vertex * new
    newV->z = v2.z - v1.z;
 }
 
+// find middle point of 2 vertices
+// NOTE: new vertex must be resized, so the length is equal to the radius
+// from http://www.songho.ca/opengl/gl_sphere.html
 void computeHalfVertex(struct Vertex v1, struct Vertex v2, struct Vertex * newV)
 {
    elementWiseAdd(v1, v2, newV);
@@ -119,7 +119,7 @@ void computeHalfVertex(struct Vertex v1, struct Vertex v2, struct Vertex * newV)
  */
 float wave(struct Vertex v)
 {
-   return ((1.1 + sin(v.y) * cos(v.z * 2) * Sin(zh)) * 0.4);
+   return ((1.1 + sin(v.y) * cos(v.x * 2) * Sin(zh)) * 0.4);
 }
 
 /*
@@ -354,7 +354,6 @@ static void icosphere(float s, int subdivision, int animation, int showNormals)
       convertedNormals[i * 3 + 1] = normals[i].y;
       convertedNormals[i * 3 + 2] = normals[i].z;
 
-
       if(showNormals)
       {
          glDisable(GL_LIGHTING);
@@ -528,9 +527,7 @@ void display()
       glDisable(GL_LIGHTING);
  
    //  Draw scene
-   glPushMatrix();
    icosphere(2, subdivisions, 1, showNormals);
-   glPopMatrix();
 
    //  Draw axes - no lighting from here on
    glDisable(GL_LIGHTING);
