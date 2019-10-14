@@ -57,16 +57,39 @@ static void surface(double x, double y, double z, double dx, double dy, double d
    glEnable(GL_TEXTURE_2D);
    glColor3f(1,1,1);
 
-   //  Top
    glColor3f(0,1,1);
    if (ntex) glBindTexture(GL_TEXTURE_2D,texture[5]);
-   glBegin(GL_QUADS);
-   glNormal3f( 0,+1, 0);
-   glTexCoord2f(0,0); glVertex3f(-1,+1,+1);
-   glTexCoord2f(1,0); glVertex3f(+1,+1,+1);
-   glTexCoord2f(1,1); glVertex3f(+1,+1,-1);
-   glTexCoord2f(0,1); glVertex3f(-1,+1,-1);
-   glEnd();
+
+   float squareSize = 1.0 / resolution;
+
+   // Draws a square with triangles of size square size
+   for(int x = 0; x < resolution; x++)
+   {
+      for(int z = 0; z < resolution; z++)
+      {
+         float tx = x * squareSize;
+         float tz = z * squareSize;
+         glPushMatrix();
+         glTranslated(x * squareSize, 0, z * squareSize);
+         glScaled(squareSize, squareSize, squareSize);
+
+         glBegin(GL_TRIANGLES);
+         glNormal3f( 0,+1, 0);
+
+         // First Triangle
+         glTexCoord2f(tx,tz);                            glVertex3f( 0, 0, 0);
+         glTexCoord2f(tx + squareSize, tz + squareSize); glVertex3f( 1, 0, 1);
+         glTexCoord2f(tx,tz + squareSize);               glVertex3f( 0, 0, 1);
+
+         // Second Triangle
+         glTexCoord2f(tx,tz);                            glVertex3f( 0, 0, 0);
+         glTexCoord2f(tx + squareSize, tz);              glVertex3f( 1, 0, 0);   
+         glTexCoord2f(tx + squareSize, tz + squareSize); glVertex3f( 1, 0, 1);
+         glEnd();
+         glPopMatrix();
+      }
+   }
+
    //  Undo transformations and textures
    glPopMatrix();
    glDisable(GL_TEXTURE_2D);
@@ -139,7 +162,7 @@ void display()
    else
       glDisable(GL_LIGHTING);
    //  Draw scene
-   surface(0,0,0 , 0.5,0.5,0.5 , 0);
+   surface(0,0,0 , 0.5,0.5,0.5 , 64);
    
    //  Draw axes - no lighting from here on
    glDisable(GL_LIGHTING);
