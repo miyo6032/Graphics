@@ -40,26 +40,101 @@ int zh        =  90;  // Light azimuth
 float ylight  =   0;  // Elevation of light
 unsigned int texture[7]; // Texture names
 
-float noise(int x, int y) {
-    int n;
+void elementWiseSubtract(float v1[3], float v2[3], float v3[3])
+{
+   v3[0] = v1[0] - v2[0];
+   v3[1] = v1[1] - v2[1];
+   v3[2] = v1[2] - v2[2];
+}
 
-    n = x + y * 57;
+void elementWiseAdd(float v1[3], float v2[3], float v3[3])
+{
+   v3[0] = v1[0] + v2[0];
+   v3[1] = v1[1] + v2[1];
+   v3[2] = v1[2] + v2[2];
+}
+
+void normalize(float v[3])
+{
+   float scale = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+   v[0] *= scale;
+   v[1] *= scale;
+   v[2] *= scale;
+}
+
+void crossProduct(float v1[3], float v2[3], float v3[3])
+{
+   v3[0] = v1[1] * v2[2] - v1[2] * v2[1];
+   v3[1] = v1[2] * v2[0] - v1[0] * v2[2];
+   v3[2] = v1[0] * v2[1] - v1[1] * v2[0];
+}
+
+/*
+ *
+ * CREDIT: Noise functions taken from https://github.com/czinn/perlin/blob/master/perlintest.c
+ *
+ */
+double rawnoise(int n) {
     n = (n << 13) ^ n;
-    return (1.0 - ( (n * ((n * n * 15731) + 789221) +  1376312589) & 0x7fffffff) / 1073741824.0);
+    return (1.0 - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0);
 }
 
-//https://code.google.com/archive/p/fractalterraingeneration/wikis/Fractional_Brownian_Motion.wiki
-float perlin(float x, float y, float gain, int octaves, int hgrid) {
-    return noise(x, y);
+double noise2d(int x, int y, int octave, int seed) {
+    return rawnoise(x * 1619 + y * 31337 + octave * 3463 + seed * 13397);
 }
+
+double interpolate(double a, double b, double x) {
+    double f = (1 - cos(x * 3.141593)) * 0.5;
+
+    return a * (1 - f) + b * f;
+}
+
+double smooth2d(double x, double y, int octave, int seed) {
+    int intx = (int)x;
+    double fracx = x - intx;
+    int inty = (int)y;
+    double fracy = y - inty;
+    
+    double v1 = noise2d(intx, inty, octave, seed);
+    double v2 = noise2d(intx + 1, inty, octave, seed);
+    double v3 = noise2d(intx, inty + 1, octave, seed);
+    double v4 = noise2d(intx + 1, inty + 1, octave, seed);
+    
+    double i1 = interpolate(v1, v2, fracx);
+    double i2 = interpolate(v3, v4, fracx);
+    
+    return interpolate(i1, i2, fracy);
+}
+
+double pnoise2d(double x, double y, double persistence, int octaves, int seed) {
+   double total = 0.0;
+   double frequency = 1.0;
+   double amplitude = 1.0;
+   int i = 0;
+   
+   for(i = 0; i < octaves; i++) {
+       total += smooth2d(x * frequency, y * frequency, i, seed) * amplitude;
+       frequency /= 2;
+       amplitude *= persistence;
+   } 
+
+   return total;
+}
+
+/*
+ * END third party noise functions
+ */
 
 static void generateHeightMap(int resolution, float heightmap[resolution][resolution])
 {
-   for(int x = 1; x < resolution; x++)
+   for(int x = 0; x < resolution; x++)
    {
       for(int z = 0; z < resolution; z++)
       {
-         heightmap[x][z] = perlin(x, z, 1, 1, 1);
+         float maxFrequency = 256 / (float) resolution;
+         float nx = x * maxFrequency - 0.5;
+         float nz = z * maxFrequency - 0.5;
+         heightmap[x][z] = pnoise2d(nx, nz, 1.4, 6, 1);
       }
    }
 }
@@ -68,10 +143,17 @@ static void surface(double x, double y, double z, double dx, double dy, double d
 {
    int verticesRes = resolution + 1;
    int numIndices = resolution * resolution * 6;
+   int numVertices = verticesRes * verticesRes;
    float heightmap[verticesRes][verticesRes];
-   float vertices[(verticesRes) * (verticesRes) * 3];
-   float textures[(verticesRes) * (verticesRes) * 2];
-   int indices[numIndices];
+   float * vertices = malloc(numVertices * 3 * sizeof(float));
+   float * textures = malloc(numVertices * 2 * sizeof(float));
+   float * normals = calloc(numVertices * 3,  sizeof(float));
+   int * indices = malloc(numIndices * sizeof(int));
+
+   for(int i = 0; i < numVertices * 3; i++)
+   {
+      normals[i] = 0;
+   }
 
    generateHeightMap(verticesRes, heightmap);
    //  Set specular color to white
@@ -99,7 +181,7 @@ static void surface(double x, double y, double z, double dx, double dy, double d
          int textureAddr = (z * verticesRes + x) * 2;
 
          vertices[vertexAddr] = tx;
-         vertices[vertexAddr + 1] = 0;
+         vertices[vertexAddr + 1] = heightmap[x][z] * squareSize;
          vertices[vertexAddr + 2] = tz;
 
          textures[textureAddr] = tx;
@@ -113,22 +195,75 @@ static void surface(double x, double y, double z, double dx, double dy, double d
       for(int z = 0; z < resolution; z++)
       {
          int indexArr = (z * resolution + x) * 6;
-         int vertexAddr = (z * verticesRes + x);
+         int vx00 = (z * verticesRes + x);
+         int vx01 = vx00 + verticesRes;
+         int vx10 = vx00 + 1;
+         int vx11 = vx00 + verticesRes + 1; // Add verticesRes for +1 Z and for +1 x
 
          // First triangle
-         indices[indexArr] = vertexAddr;
-         // Add verticesRes for +1 Z and for +1 x
-         indices[indexArr + 1] = vertexAddr + verticesRes + 1;
-         indices[indexArr + 2] = vertexAddr + verticesRes;
+         indices[indexArr] = vx00;
+         indices[indexArr + 1] = vx11;
+         indices[indexArr + 2] = vx01;
 
          // Second triangle
-         indices[indexArr + 3] = vertexAddr;
-         indices[indexArr + 4] = vertexAddr + 1;
-         indices[indexArr + 5] = vertexAddr + verticesRes + 1;
+         indices[indexArr + 3] = vx00;
+         indices[indexArr + 4] = vx10;
+         indices[indexArr + 5] = vx11;
+
+         // Normal calculation
+         float toCross1[3];
+         float toCross2[3];
+         float cross[3];
+
+         // Calculate normal of first triangle
+         elementWiseSubtract(&vertices[vx11*3], &vertices[vx00*3], toCross1);
+         elementWiseSubtract(&vertices[vx01*3], &vertices[vx00*3], toCross2);
+         crossProduct(toCross2, toCross1, cross);
+
+         elementWiseAdd(&vertices[vx00*3], toCross1, toCross1);
+         elementWiseAdd(&vertices[vx00*3], toCross2, toCross2);
+
+         // glBegin(GL_LINE_STRIP);
+         // glVertex3f(vertices[vx00*3], vertices[vx00*3 + 1], vertices[vx00*3 + 1]);
+         // glVertex3f(toCross1[0], toCross1[1], toCross1[2]);
+         // glVertex3f(toCross2[0], toCross2[1], toCross2[2]);
+         // glEnd();
+
+         // Add the normal of the triangle to the three vertices that touch it
+         elementWiseAdd(&normals[vx00*3], cross, &normals[vx00*3]);
+         elementWiseAdd(&normals[vx11*3], cross, &normals[vx11*3]);
+         elementWiseAdd(&normals[vx01*3], cross, &normals[vx01*3]);
+
+         // Calculate the normal of the second triangle
+         elementWiseSubtract(&vertices[vx10*3], &vertices[vx00*3], toCross1);
+         elementWiseSubtract(&vertices[vx11*3], &vertices[vx00*3], toCross2);
+         crossProduct(toCross2, toCross1, cross);
+
+         elementWiseAdd(&normals[vx00*3], cross, &normals[vx00*3]);
+         elementWiseAdd(&normals[vx11*3], cross, &normals[vx11*3]);
+         elementWiseAdd(&normals[vx10*3], cross, &normals[vx10*3]);
       }
    }
 
-   glNormalPointer(GL_FLOAT, 0, vertices);
+   // glPushMatrix();
+   // glTranslated(x, y, z);
+   // glScaled(dx, dy, dz);
+   // for(int x = 0; x < verticesRes; x++)
+   // {
+   //    for(int z = 0; z < verticesRes; z++)
+   //    {
+   //       int vertexAddr = (z * verticesRes + x) * 3;
+   //       glBegin(GL_LINE_STRIP);
+   //       glVertex3f(vertices[vertexAddr], vertices[vertexAddr + 1], vertices[vertexAddr + 2]);
+   //       float temp[3];
+   //       elementWiseAdd(&normals[vertexAddr], &vertices[vertexAddr], temp);
+   //       glVertex3f(temp[0], temp[1], temp[2]);
+   //       glEnd();
+   //    }
+   // }
+   // glPopMatrix();
+
+   glNormalPointer(GL_FLOAT, 0, normals);
    glEnableClientState(GL_NORMAL_ARRAY);
 
    glVertexPointer(3, GL_FLOAT, 0, vertices);
@@ -152,6 +287,10 @@ static void surface(double x, double y, double z, double dx, double dy, double d
    //  Undo transformations and textures
    glPopMatrix();
    glDisable(GL_TEXTURE_2D);
+   free(indices);
+   free(vertices);
+   free(textures);
+   free(normals);
 }
 
 /*
@@ -221,7 +360,7 @@ void display()
    else
       glDisable(GL_LIGHTING);
    //  Draw scene
-   surface(0,0,0 , 1,1,1 , 64);
+   surface(0,0,0 , 4,4,4 , 256);
    
    //  Draw axes - no lighting from here on
    glDisable(GL_LIGHTING);
