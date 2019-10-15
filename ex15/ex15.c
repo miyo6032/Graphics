@@ -40,14 +40,102 @@ int zh        =  90;  // Light azimuth
 float ylight  =   0;  // Elevation of light
 unsigned int texture[7]; // Texture names
 
+float noise(int x, int y) {
+    int n;
+
+    n = x + y * 57;
+    n = (n << 13) ^ n;
+    return (1.0 - ( (n * ((n * n * 15731) + 789221) +  1376312589) & 0x7fffffff) / 1073741824.0);
+}
+
+//https://code.google.com/archive/p/fractalterraingeneration/wikis/Fractional_Brownian_Motion.wiki
+float perlin(float x, float y, float gain, int octaves, int hgrid) {
+    return noise(x, y);
+}
+
+static void generateHeightMap(int resolution, float heightmap[resolution][resolution])
+{
+   for(int x = 1; x < resolution; x++)
+   {
+      for(int z = 0; z < resolution; z++)
+      {
+         heightmap[x][z] = perlin(x, z, 1, 1, 1);
+      }
+   }
+}
+
 static void surface(double x, double y, double z, double dx, double dy, double dz, int resolution)
 {
+   int verticesRes = resolution + 1;
+   int numIndices = resolution * resolution * 6;
+   float heightmap[verticesRes][verticesRes];
+   float vertices[(verticesRes) * (verticesRes) * 3];
+   float textures[(verticesRes) * (verticesRes) * 2];
+   int indices[numIndices];
+
+   generateHeightMap(verticesRes, heightmap);
    //  Set specular color to white
    float white[] = {1,1,1,1};
    float Emission[]  = {0.0,0.0,0.01*emission,1.0};
+
    glMaterialf(GL_FRONT_AND_BACK,GL_SHININESS,shiny);
    glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,white);
    glMaterialfv(GL_FRONT_AND_BACK,GL_EMISSION,Emission);
+
+   if (ntex) glBindTexture(GL_TEXTURE_2D,texture[5]);
+
+   float squareSize = 1.0 / resolution;
+
+   // Define the vertices and the textures
+   // the x and z value are simply the coordinates of a square divided by the number of squares
+   // the y is the heightmap
+   for(int x = 0; x < verticesRes; x++)
+   {
+      for(int z = 0; z < verticesRes; z++)
+      {
+         float tx = x * squareSize;
+         float tz = z * squareSize;
+         int vertexAddr = (z * verticesRes + x) * 3;
+         int textureAddr = (z * verticesRes + x) * 2;
+
+         vertices[vertexAddr] = tx;
+         vertices[vertexAddr + 1] = 0;
+         vertices[vertexAddr + 2] = tz;
+
+         textures[textureAddr] = tx;
+         textures[textureAddr + 1] = tz;
+      }
+   }
+
+   // Define each square as two triangles, both going counterclockwise
+   for(int x = 0; x < resolution; x++)
+   {
+      for(int z = 0; z < resolution; z++)
+      {
+         int indexArr = (z * resolution + x) * 6;
+         int vertexAddr = (z * verticesRes + x);
+
+         // First triangle
+         indices[indexArr] = vertexAddr;
+         // Add verticesRes for +1 Z and for +1 x
+         indices[indexArr + 1] = vertexAddr + verticesRes + 1;
+         indices[indexArr + 2] = vertexAddr + verticesRes;
+
+         // Second triangle
+         indices[indexArr + 3] = vertexAddr;
+         indices[indexArr + 4] = vertexAddr + 1;
+         indices[indexArr + 5] = vertexAddr + verticesRes + 1;
+      }
+   }
+
+   glNormalPointer(GL_FLOAT, 0, vertices);
+   glEnableClientState(GL_NORMAL_ARRAY);
+
+   glVertexPointer(3, GL_FLOAT, 0, vertices);
+   glEnableClientState(GL_VERTEX_ARRAY);
+
+   glTexCoordPointer(2, GL_FLOAT, 0, textures);
+   glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 
    glPushMatrix();
    glTranslated(x, y, z);
@@ -55,41 +143,12 @@ static void surface(double x, double y, double z, double dx, double dy, double d
 
    //  Enable textures
    glEnable(GL_TEXTURE_2D);
-   glColor3f(1,1,1);
+   glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, indices);
 
-   glColor3f(0,1,1);
-   if (ntex) glBindTexture(GL_TEXTURE_2D,texture[5]);
-
-   float squareSize = 1.0 / resolution;
-
-   // Draws a square with triangles of size square size
-   for(int x = 0; x < resolution; x++)
-   {
-      for(int z = 0; z < resolution; z++)
-      {
-         float tx = x * squareSize;
-         float tz = z * squareSize;
-         glPushMatrix();
-         glTranslated(x * squareSize, 0, z * squareSize);
-         glScaled(squareSize, squareSize, squareSize);
-
-         glBegin(GL_TRIANGLES);
-         glNormal3f( 0,+1, 0);
-
-         // First Triangle
-         glTexCoord2f(tx,tz);                            glVertex3f( 0, 0, 0);
-         glTexCoord2f(tx + squareSize, tz + squareSize); glVertex3f( 1, 0, 1);
-         glTexCoord2f(tx,tz + squareSize);               glVertex3f( 0, 0, 1);
-
-         // Second Triangle
-         glTexCoord2f(tx,tz);                            glVertex3f( 0, 0, 0);
-         glTexCoord2f(tx + squareSize, tz);              glVertex3f( 1, 0, 0);   
-         glTexCoord2f(tx + squareSize, tz + squareSize); glVertex3f( 1, 0, 1);
-         glEnd();
-         glPopMatrix();
-      }
-   }
-
+   glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+   glDisableClientState(GL_NORMAL_ARRAY);
+   //  Disable vertex array
+   glDisableClientState(GL_VERTEX_ARRAY);
    //  Undo transformations and textures
    glPopMatrix();
    glDisable(GL_TEXTURE_2D);
@@ -162,7 +221,7 @@ void display()
    else
       glDisable(GL_LIGHTING);
    //  Draw scene
-   surface(0,0,0 , 0.5,0.5,0.5 , 64);
+   surface(0,0,0 , 1,1,1 , 64);
    
    //  Draw axes - no lighting from here on
    glDisable(GL_LIGHTING);
@@ -228,12 +287,6 @@ void special(int key,int x,int y)
    //  Down arrow key - decrease elevation by 5 degrees
    else if (key == GLUT_KEY_DOWN)
       ph -= 5;
-   //  PageUp key - increase dim
-   else if (key == GLUT_KEY_PAGE_DOWN)
-      dim += 0.1;
-   //  PageDown key - decrease dim
-   else if (key == GLUT_KEY_PAGE_UP && dim>1)
-      dim -= 0.1;
    //  Keep angles to +/-360 degrees
    th %= 360;
    ph %= 360;
@@ -301,6 +354,12 @@ void key(unsigned char ch,int x,int y)
       rep++;
    else if (ch=='-' && rep>1)
       rep--;
+   // increase dim
+   else if (ch == '8')
+      dim += 0.1;
+   // decrease dim
+   else if (ch == '9' && dim>1)
+      dim -= 0.1;
    //  Translate shininess power to value (-1 => 0)
    shiny = shininess<0 ? 0 : pow(2.0,shininess);
    //  Reproject
@@ -327,6 +386,7 @@ void reshape(int width,int height)
  */
 int main(int argc,char* argv[])
 {
+
    //  Initialize GLUT
    glutInit(&argc,argv);
    //  Request double buffered, true color window with Z buffering at 600x600
