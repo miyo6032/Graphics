@@ -6,7 +6,6 @@
  *  Key bindings:
  *  l          Toggle lighting on/off
  *  t          Change textures
- *  m          Toggles texture mode modulate/replace
  *  a/A        decrease/increase ambient light
  *  d/D        decrease/increase diffuse light
  *  s/S        decrease/increase specular light
@@ -15,12 +14,11 @@
  *  []         Lower/rise light
  *  x          Toggle axes
  *  arrows     Change view angle
- *  PgDn/PgUp  Zoom in and out
+ *  8/9  Zoom in and out
  *  0          Reset view angle
  *  ESC        Exit
  */
 #include "CSCIx229.h"
-int mode=0;       //  Texture mode
 int ntex=0;       //  Cube faces
 int axes=1;       //  Display axes
 int th=0;         //  Azimuth of view angle
@@ -128,14 +126,17 @@ double pnoise2d(double x, double y, double persistence, int octaves, int seed) {
  * END third party noise functions
  */
 
+/*
+ * Generate the height map for the mountains
+ */
 static void generateHeightMap(int resolution, float heightmap[resolution][resolution])
 {
    for(int x = 0; x < resolution; x++)
    {
       for(int z = 0; z < resolution; z++)
       {
-         // Don't really know how these numbers work, just fiddles
-         // with it until something decent appeared
+         // Don't really know how these numbers work, just fiddle
+         // with it until something decent appeares
          float maxFrequency = 256 / (float) resolution;
          float nx = x * maxFrequency - 0.5;
          float nz = z * maxFrequency - 0.5;
@@ -145,6 +146,9 @@ static void generateHeightMap(int resolution, float heightmap[resolution][resolu
    }
 }
 
+/*
+ * Draw the mountains on the surface
+ */
 static void surface(double x, double y, double z, double dx, double dy, double dz, float heightmap[resolution][resolution])
 {
    int verticesRes = resolution + 1;
@@ -228,24 +232,6 @@ static void surface(double x, double y, double z, double dx, double dy, double d
       }
    }
 
-   // glPushMatrix();
-   // glTranslated(x, y, z);
-   // glScaled(dx, dy, dz);
-   // for(int x = 0; x < verticesRes; x++)
-   // {
-   //    for(int z = 0; z < verticesRes; z++)
-   //    {
-   //       int vertexAddr = (z * verticesRes + x) * 3;
-   //       glBegin(GL_LINE_STRIP);
-   //       glVertex3f(vertices[vertexAddr], vertices[vertexAddr + 1], vertices[vertexAddr + 2]);
-   //       float temp[3];
-   //       elementWiseAdd(&normals[vertexAddr], &vertices[vertexAddr], temp);
-   //       glVertex3f(temp[0], temp[1], temp[2]);
-   //       glEnd();
-   //    }
-   // }
-   // glPopMatrix();
-
    glNormalPointer(GL_FLOAT, 0, normals);
    glEnableClientState(GL_NORMAL_ARRAY);
 
@@ -257,6 +243,7 @@ static void surface(double x, double y, double z, double dx, double dy, double d
 
    //  Enable textures
    glEnable(GL_TEXTURE_2D);
+   glBindTexture(GL_TEXTURE_2D,texture[2]);
    glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, indices);
 
    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
@@ -272,19 +259,15 @@ static void surface(double x, double y, double z, double dx, double dy, double d
    free(normals);
 }
 
-static void core(double x, double y, double z, double dx, double dy, double dz, float heightmap[resolution][resolution])
+/*
+ * Draw the stone on the side going up to the mountains
+ */
+static void stone(double x, double y, double z, double dx, double dy, double dz, float heightmap[resolution][resolution])
 {
+   glBindTexture(GL_TEXTURE_2D, texture[0]);
    glEnable(GL_TEXTURE_2D);
 
    float height = 1;
-   glBegin(GL_QUADS);
-   // Draw the bottom of the box
-   glNormal3f( 0,-1, 0);
-   glTexCoord2f(0,0); glVertex3f(0, -height, 0);
-   glTexCoord2f(1,0); glVertex3f(1, -height, 0);
-   glTexCoord2f(1,1); glVertex3f(1, -height, 1);
-   glTexCoord2f(0,1); glVertex3f(0, -height, 1);
-   glEnd();
 
    // Back
    glBegin(GL_QUADS);
@@ -341,6 +324,70 @@ static void core(double x, double y, double z, double dx, double dy, double dz, 
       glTexCoord2f(resX,heightmap[resolution][x] + 1); glVertex3f(1, heightmap[resolution][x], resX);
    }
    glEnd();
+
+   glDisable(GL_TEXTURE_2D);
+}
+
+// It's basically a cube
+static void lava()
+{
+   //  Save transformation
+   glPushMatrix();
+
+   //  Enable textures
+   glEnable(GL_TEXTURE_2D);
+   glColor3f(1,1,1);
+   glBindTexture(GL_TEXTURE_2D,texture[1]);
+   //  Front
+   glBegin(GL_QUADS);
+   glNormal3f( 0, 0, 1);
+   glTexCoord2f(0,0); glVertex3f(0,0, 1);
+   glTexCoord2f(1,0); glVertex3f(+1,0, 1);
+   glTexCoord2f(1,1); glVertex3f(+1,+1, 1);
+   glTexCoord2f(0,1); glVertex3f(0,+1, 1);
+   glEnd();
+   //  Back
+   glBegin(GL_QUADS);
+   glNormal3f( 0, 0,-1);
+   glTexCoord2f(0,0); glVertex3f(+1,0,0);
+   glTexCoord2f(1,0); glVertex3f(0,0,0);
+   glTexCoord2f(1,1); glVertex3f(0,+1,0);
+   glTexCoord2f(0,1); glVertex3f(+1,+1,0);
+   glEnd();
+   //  Right
+   glBegin(GL_QUADS);
+   glNormal3f(+1, 0, 0);
+   glTexCoord2f(0,0); glVertex3f(+1,0,+1);
+   glTexCoord2f(1,0); glVertex3f(+1,0,0);
+   glTexCoord2f(1,1); glVertex3f(+1,+1,0);
+   glTexCoord2f(0,1); glVertex3f(+1,+1,+1);
+   glEnd();
+   //  Left
+   glBegin(GL_QUADS);
+   glNormal3f(-1, 0, 0);
+   glTexCoord2f(0,0); glVertex3f(0,0,0);
+   glTexCoord2f(1,0); glVertex3f(0,0,+1);
+   glTexCoord2f(1,1); glVertex3f(0,+1,+1);
+   glTexCoord2f(0,1); glVertex3f(0,+1,0);
+   glEnd();
+   //  Top
+   glBegin(GL_QUADS);
+   glNormal3f( 0,+1, 0);
+   glTexCoord2f(0,0); glVertex3f(0,+1,+1);
+   glTexCoord2f(1,0); glVertex3f(+1,+1,+1);
+   glTexCoord2f(1,1); glVertex3f(+1,+1,0);
+   glTexCoord2f(0,1); glVertex3f(0,+1,0);
+   glEnd();
+   //  Bottom
+   glBegin(GL_QUADS);
+   glNormal3f( 0,-1, 0);
+   glTexCoord2f(0,0); glVertex3f(0,0,0);
+   glTexCoord2f(1,0); glVertex3f(+1,0,0);
+   glTexCoord2f(1,1); glVertex3f(+1,0,+1);
+   glTexCoord2f(0,1); glVertex3f(0,0,+1);
+   glEnd();
+   //  Undo transformations and textures
+   glPopMatrix();
    glDisable(GL_TEXTURE_2D);
 }
 
@@ -354,15 +401,19 @@ static void terrain(double x, double y, double z, double dx, double dy, double d
    glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,white);
    glMaterialfv(GL_FRONT_AND_BACK,GL_EMISSION,Emission);
 
-   if (ntex) glBindTexture(GL_TEXTURE_2D,texture[5]);
-
    float heightmap[resolution + 1][resolution + 1];
    generateHeightMap(resolution + 1, heightmap);
    glPushMatrix();
    glTranslated(x, y, z);
    glScaled(dx, dy, dz);
    surface(x, y, z, dx, dy, dz, heightmap);
-   core(x, y, z, dx, dy, dz, heightmap);
+   stone(x, y, z, dx, dy, dz, heightmap);
+   glPopMatrix();
+
+   glPushMatrix();
+   glTranslated(x, y - dy * 2, z);
+   glScaled(dx, dy, dz);
+   lava();
    glPopMatrix();
 }
 
@@ -458,7 +509,7 @@ void display()
    }
    //  Display parameters
    glWindowPos2i(5,5);
-   Print("Angle=%d,%d  Dim=%.1f Light=%s Texture=%s",th,ph,dim,light?"On":"Off",mode?"Replace":"Modulate");
+   Print("Angle=%d,%d  Dim=%.1f Light=%s",th,ph,dim,light?"On":"Off");
    if (light)
    {
       glWindowPos2i(5,25);
@@ -519,9 +570,6 @@ void key(unsigned char ch,int x,int y)
    //  Reset view angle
    else if (ch == '0')
       th = ph = 0;
-   //  Toggle texture mode
-   else if (ch == 'm' || ch == 'M')
-      mode = 1-mode;
    //  Toggle axes
    else if (ch == 'x' || ch == 'X')
       axes = 1-axes;
@@ -604,7 +652,7 @@ int main(int argc,char* argv[])
    //  Request double buffered, true color window with Z buffering at 600x600
    glutInitDisplayMode(GLUT_RGB | GLUT_DEPTH | GLUT_DOUBLE);
    glutInitWindowSize(600,600);
-   glutCreateWindow("Textures and Lighting");
+   glutCreateWindow("HW6 Michael Yoshimura");
    //  Set callbacks
    glutDisplayFunc(display);
    glutReshapeFunc(reshape);
@@ -612,13 +660,9 @@ int main(int argc,char* argv[])
    glutKeyboardFunc(key);
    glutIdleFunc(idle);
    //  Load textures
-   texture[0] = LoadTexBMP("crate.bmp");
-   texture[1] = LoadTexBMP("img1.bmp");
-   texture[2] = LoadTexBMP("img2.bmp");
-   texture[3] = LoadTexBMP("img3.bmp");
-   texture[4] = LoadTexBMP("img4.bmp");
-   texture[5] = LoadTexBMP("img5.bmp");
-   texture[6] = LoadTexBMP("img6.bmp");
+   texture[0] = LoadTexBMP("stone.bmp");
+   texture[1] = LoadTexBMP("lava.bmp");
+   texture[2] = LoadTexBMP("grass.bmp");
    //  Pass control to GLUT so it can interact with the user
    ErrCheck("init");
    glutMainLoop();
