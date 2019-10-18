@@ -40,6 +40,9 @@ int zh        =  90;  // Light azimuth
 float ylight  =   0;  // Elevation of light
 unsigned int texture[7]; // Texture names
 
+// Other Constants
+int resolution = 128;
+
 void elementWiseSubtract(float v1[3], float v2[3], float v3[3])
 {
    v3[0] = v1[0] - v2[0];
@@ -131,40 +134,26 @@ static void generateHeightMap(int resolution, float heightmap[resolution][resolu
    {
       for(int z = 0; z < resolution; z++)
       {
+         // Don't really know how these numbers work, just fiddles
+         // with it until something decent appeared
          float maxFrequency = 256 / (float) resolution;
          float nx = x * maxFrequency - 0.5;
          float nz = z * maxFrequency - 0.5;
-         heightmap[x][z] = pnoise2d(nx, nz, 1.4, 6, 1);
+
+         heightmap[x][z] = pnoise2d(nx, nz, 1.4, 5, 2555) / resolution;
       }
    }
 }
 
-static void surface(double x, double y, double z, double dx, double dy, double dz, int resolution)
+static void surface(double x, double y, double z, double dx, double dy, double dz, float heightmap[resolution][resolution])
 {
    int verticesRes = resolution + 1;
    int numIndices = resolution * resolution * 6;
    int numVertices = verticesRes * verticesRes;
-   float heightmap[verticesRes][verticesRes];
    float * vertices = malloc(numVertices * 3 * sizeof(float));
    float * textures = malloc(numVertices * 2 * sizeof(float));
    float * normals = calloc(numVertices * 3,  sizeof(float));
    int * indices = malloc(numIndices * sizeof(int));
-
-   for(int i = 0; i < numVertices * 3; i++)
-   {
-      normals[i] = 0;
-   }
-
-   generateHeightMap(verticesRes, heightmap);
-   //  Set specular color to white
-   float white[] = {1,1,1,1};
-   float Emission[]  = {0.0,0.0,0.01*emission,1.0};
-
-   glMaterialf(GL_FRONT_AND_BACK,GL_SHININESS,shiny);
-   glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,white);
-   glMaterialfv(GL_FRONT_AND_BACK,GL_EMISSION,Emission);
-
-   if (ntex) glBindTexture(GL_TEXTURE_2D,texture[5]);
 
    float squareSize = 1.0 / resolution;
 
@@ -181,7 +170,7 @@ static void surface(double x, double y, double z, double dx, double dy, double d
          int textureAddr = (z * verticesRes + x) * 2;
 
          vertices[vertexAddr] = tx;
-         vertices[vertexAddr + 1] = heightmap[x][z] * squareSize;
+         vertices[vertexAddr + 1] = heightmap[x][z];
          vertices[vertexAddr + 2] = tz;
 
          textures[textureAddr] = tx;
@@ -222,12 +211,6 @@ static void surface(double x, double y, double z, double dx, double dy, double d
 
          elementWiseAdd(&vertices[vx00*3], toCross1, toCross1);
          elementWiseAdd(&vertices[vx00*3], toCross2, toCross2);
-
-         // glBegin(GL_LINE_STRIP);
-         // glVertex3f(vertices[vx00*3], vertices[vx00*3 + 1], vertices[vx00*3 + 1]);
-         // glVertex3f(toCross1[0], toCross1[1], toCross1[2]);
-         // glVertex3f(toCross2[0], toCross2[1], toCross2[2]);
-         // glEnd();
 
          // Add the normal of the triangle to the three vertices that touch it
          elementWiseAdd(&normals[vx00*3], cross, &normals[vx00*3]);
@@ -272,25 +255,115 @@ static void surface(double x, double y, double z, double dx, double dy, double d
    glTexCoordPointer(2, GL_FLOAT, 0, textures);
    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 
-   glPushMatrix();
-   glTranslated(x, y, z);
-   glScaled(dx, dy, dz);
-
    //  Enable textures
    glEnable(GL_TEXTURE_2D);
    glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, indices);
 
    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
    glDisableClientState(GL_NORMAL_ARRAY);
-   //  Disable vertex array
    glDisableClientState(GL_VERTEX_ARRAY);
+
    //  Undo transformations and textures
-   glPopMatrix();
    glDisable(GL_TEXTURE_2D);
+
    free(indices);
    free(vertices);
    free(textures);
    free(normals);
+}
+
+static void core(double x, double y, double z, double dx, double dy, double dz, float heightmap[resolution][resolution])
+{
+   glEnable(GL_TEXTURE_2D);
+
+   float height = 1;
+   glBegin(GL_QUADS);
+   // Draw the bottom of the box
+   glNormal3f( 0,-1, 0);
+   glTexCoord2f(0,0); glVertex3f(0, -height, 0);
+   glTexCoord2f(1,0); glVertex3f(1, -height, 0);
+   glTexCoord2f(1,1); glVertex3f(1, -height, 1);
+   glTexCoord2f(0,1); glVertex3f(0, -height, 1);
+   glEnd();
+
+   // Back
+   glBegin(GL_QUADS);
+   glNormal3f( 0, 0, -1);
+   for(int x = 0; x < resolution; x++)
+   {
+      float dx = 1 / (float)resolution;
+      float resX = x / (float)resolution;
+      glTexCoord2f(resX,0); glVertex3f(resX, -height, 0);
+      glTexCoord2f(resX + dx,0); glVertex3f(resX + dx, -height, 0);
+      glTexCoord2f(resX + dx, heightmap[x + 1][0] + 1); glVertex3f(resX + dx, heightmap[x + 1][0], 0);
+      glTexCoord2f(resX, heightmap[x][0] + 1); glVertex3f(resX, heightmap[x][0], 0);
+   }
+   glEnd();
+
+   // Front
+   glBegin(GL_QUADS);
+   glNormal3f( 0, 0, 1);
+   for(int x = 0; x < resolution; x++)
+   {
+      float dx = 1 / (float)resolution;
+      float resX = x / (float)resolution;
+      glTexCoord2f(resX,0); glVertex3f(resX, -height, 1);
+      glTexCoord2f(resX + dx,0); glVertex3f(resX + dx, -height, 1);
+      glTexCoord2f(resX + dx,heightmap[x + 1][resolution] + 1); glVertex3f(resX + dx, heightmap[x + 1][resolution], 1);
+      glTexCoord2f(resX,heightmap[x][resolution] + 1); glVertex3f(resX, heightmap[x][resolution], 1);
+   }
+   glEnd();
+
+   // Left
+   glBegin(GL_QUADS);
+   glNormal3f( -1, 0, 0);
+   for(int x = 0; x < resolution; x++)
+   {
+      float dx = 1 / (float)resolution;
+      float resX = x / (float)resolution;
+      glTexCoord2f(resX,0); glVertex3f(0, -height, resX);
+      glTexCoord2f(resX + dx,0); glVertex3f(0, -height, resX + dx);
+      glTexCoord2f(resX + dx,heightmap[0][x + 1] + 1); glVertex3f(0, heightmap[0][x + 1], resX + dx);
+      glTexCoord2f(resX,heightmap[0][x] + 1); glVertex3f(0, heightmap[0][x], resX);
+   }
+   glEnd();
+
+   // Right
+   glBegin(GL_QUADS);
+   glNormal3f( 1, 0, 0);
+   for(int x = 0; x < resolution; x++)
+   {
+      float dx = 1 / (float)resolution;
+      float resX = x / (float)resolution;
+      glTexCoord2f(resX,0); glVertex3f(1, -height, resX);
+      glTexCoord2f(resX + dx,0); glVertex3f(1, -height, resX + dx);
+      glTexCoord2f(resX + dx,heightmap[resolution][x + 1] + 1); glVertex3f(1, heightmap[resolution][x + 1], resX + dx);
+      glTexCoord2f(resX,heightmap[resolution][x] + 1); glVertex3f(1, heightmap[resolution][x], resX);
+   }
+   glEnd();
+   glDisable(GL_TEXTURE_2D);
+}
+
+static void terrain(double x, double y, double z, double dx, double dy, double dz)
+{
+   //  Set specular color to white
+   float white[] = {1,1,1,1};
+   float Emission[]  = {0.0,0.0,0.01*emission,1.0};
+
+   glMaterialf(GL_FRONT_AND_BACK,GL_SHININESS,shiny);
+   glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,white);
+   glMaterialfv(GL_FRONT_AND_BACK,GL_EMISSION,Emission);
+
+   if (ntex) glBindTexture(GL_TEXTURE_2D,texture[5]);
+
+   float heightmap[resolution + 1][resolution + 1];
+   generateHeightMap(resolution + 1, heightmap);
+   glPushMatrix();
+   glTranslated(x, y, z);
+   glScaled(dx, dy, dz);
+   surface(x, y, z, dx, dy, dz, heightmap);
+   core(x, y, z, dx, dy, dz, heightmap);
+   glPopMatrix();
 }
 
 /*
@@ -360,7 +433,7 @@ void display()
    else
       glDisable(GL_LIGHTING);
    //  Draw scene
-   surface(0,0,0 , 4,4,4 , 256);
+   terrain(-2,0,-2 , 4,4,4);
    
    //  Draw axes - no lighting from here on
    glDisable(GL_LIGHTING);
