@@ -126,30 +126,62 @@ double pnoise2d(double x, double y, double persistence, int octaves, int seed) {
  * END third party noise functions
  */
 
+void normalizeHeightmap(float scale, int verticesRes, float heightmap[verticesRes][verticesRes])
+ {
+   float maxHeight = 0;
+   float minHeight = 0;
+   for(int x = 0; x < verticesRes; x++)
+   {
+      for(int z = 0; z < verticesRes; z++)
+      {
+         if(heightmap[x][z] > maxHeight)
+         {
+            maxHeight = heightmap[x][z];
+         }
+         else if(heightmap[x][z] < minHeight)
+         {
+            minHeight = heightmap[x][z];
+         }
+      }
+   }
+   float magnitude = maxHeight - minHeight;
+   float rescale = 1 / magnitude;
+   for(int x = 0; x < verticesRes; x++)
+   {
+      for(int z = 0; z < verticesRes; z++)
+      {
+         heightmap[x][z] -= minHeight;
+         heightmap[x][z] *= rescale;
+         heightmap[x][z] = pow(heightmap[x][z], 2.50) * scale;
+      }
+   }
+ }
+
 /*
  * Generate the height map for the mountains
  */
-static void generateHeightMap(int resolution, float heightmap[resolution][resolution])
+static void generateHeightMap(float scale, int verticesRes, float heightmap[verticesRes][verticesRes])
 {
-   for(int x = 0; x < resolution; x++)
+   for(int x = 0; x < verticesRes; x++)
    {
-      for(int z = 0; z < resolution; z++)
+      for(int z = 0; z < verticesRes; z++)
       {
          // Don't really know how these numbers work, just fiddle
          // with it until something decent appeares
-         float maxFrequency = 256 / (float) resolution;
+         float maxFrequency = 256 / (float) verticesRes;
          float nx = x * maxFrequency - 0.5;
          float nz = z * maxFrequency - 0.5;
 
-         heightmap[x][z] = pnoise2d(nx, nz, 1.4, 5, 2555) / resolution;
+         heightmap[x][z] = pnoise2d(nx, nz, 1.4, 5, 2555);
       }
    }
+   normalizeHeightmap(scale, verticesRes, heightmap);
 }
 
 /*
  * Draw the mountains on the surface
  */
-static void surface(double x, double y, double z, double dx, double dy, double dz, float heightmap[resolution][resolution])
+static void surface(double x, double y, double z, double dx, double dy, double dz, float heightmap[resolution + 1][resolution + 1], float heightmapScale)
 {
    int verticesRes = resolution + 1;
    int numIndices = resolution * resolution * 6;
@@ -158,6 +190,7 @@ static void surface(double x, double y, double z, double dx, double dy, double d
    float * textures = malloc(numVertices * 2 * sizeof(float));
    float * normals = calloc(numVertices * 3,  sizeof(float));
    int * indices = malloc(numIndices * sizeof(int));
+   float * rgb = malloc(numVertices * 3 * sizeof(float));
 
    float squareSize = 1.0 / resolution;
 
@@ -177,8 +210,21 @@ static void surface(double x, double y, double z, double dx, double dy, double d
          vertices[vertexAddr + 1] = heightmap[x][z];
          vertices[vertexAddr + 2] = tz;
 
-         textures[textureAddr] = tx;
-         textures[textureAddr + 1] = tz;
+         if (heightmap[x][z] / heightmapScale < 0.05) // Water color
+         {
+            rgb[vertexAddr] = 0.05;
+            rgb[vertexAddr + 1] = 0.05;
+            rgb[vertexAddr + 2] = 0.25;
+         }
+         else
+         {
+            rgb[vertexAddr] = heightmap[x][z] / heightmapScale;
+            rgb[vertexAddr + 1] = ((heightmap[x][z] * 0.75) / heightmapScale) + 0.25; // Make it more green in the valleys
+            rgb[vertexAddr + 2] = heightmap[x][z] / heightmapScale;
+         }
+
+         textures[textureAddr] = tx * 8;
+         textures[textureAddr + 1] = tz * 8;
       }
    }
 
@@ -241,6 +287,9 @@ static void surface(double x, double y, double z, double dx, double dy, double d
    glTexCoordPointer(2, GL_FLOAT, 0, textures);
    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 
+   glColorPointer(3,GL_FLOAT,0,rgb);
+   glEnableClientState(GL_COLOR_ARRAY);
+
    //  Enable textures
    glEnable(GL_TEXTURE_2D);
    glBindTexture(GL_TEXTURE_2D,texture[2]);
@@ -249,10 +298,12 @@ static void surface(double x, double y, double z, double dx, double dy, double d
    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
    glDisableClientState(GL_NORMAL_ARRAY);
    glDisableClientState(GL_VERTEX_ARRAY);
+   glDisableClientState(GL_COLOR_ARRAY);
 
    //  Undo transformations and textures
    glDisable(GL_TEXTURE_2D);
 
+   free(rgb);
    free(indices);
    free(vertices);
    free(textures);
@@ -262,12 +313,12 @@ static void surface(double x, double y, double z, double dx, double dy, double d
 /*
  * Draw the stone on the side going up to the mountains
  */
-static void stone(double x, double y, double z, double dx, double dy, double dz, float heightmap[resolution][resolution])
+static void stone(double x, double y, double z, double dx, double dy, double dz, float heightmap[resolution + 1][resolution + 1])
 {
    glBindTexture(GL_TEXTURE_2D, texture[0]);
    glEnable(GL_TEXTURE_2D);
 
-   float height = 1;
+   float height = 0.5;
 
    // Back
    glBegin(GL_QUADS);
@@ -276,8 +327,8 @@ static void stone(double x, double y, double z, double dx, double dy, double dz,
    {
       float dx = 1 / (float)resolution;
       float resX = x / (float)resolution;
-      glTexCoord2f(resX,0); glVertex3f(resX, -height, 0);
-      glTexCoord2f(resX + dx,0); glVertex3f(resX + dx, -height, 0);
+      glTexCoord2f(resX, 1-height); glVertex3f(resX, -height, 0);
+      glTexCoord2f(resX + dx,  1-height); glVertex3f(resX + dx, -height, 0);
       glTexCoord2f(resX + dx, heightmap[x + 1][0] + 1); glVertex3f(resX + dx, heightmap[x + 1][0], 0);
       glTexCoord2f(resX, heightmap[x][0] + 1); glVertex3f(resX, heightmap[x][0], 0);
    }
@@ -290,8 +341,8 @@ static void stone(double x, double y, double z, double dx, double dy, double dz,
    {
       float dx = 1 / (float)resolution;
       float resX = x / (float)resolution;
-      glTexCoord2f(resX,0); glVertex3f(resX, -height, 1);
-      glTexCoord2f(resX + dx,0); glVertex3f(resX + dx, -height, 1);
+      glTexCoord2f(resX,1-height); glVertex3f(resX, -height, 1);
+      glTexCoord2f(resX + dx,1-height); glVertex3f(resX + dx, -height, 1);
       glTexCoord2f(resX + dx,heightmap[x + 1][resolution] + 1); glVertex3f(resX + dx, heightmap[x + 1][resolution], 1);
       glTexCoord2f(resX,heightmap[x][resolution] + 1); glVertex3f(resX, heightmap[x][resolution], 1);
    }
@@ -304,8 +355,8 @@ static void stone(double x, double y, double z, double dx, double dy, double dz,
    {
       float dx = 1 / (float)resolution;
       float resX = x / (float)resolution;
-      glTexCoord2f(resX,0); glVertex3f(0, -height, resX);
-      glTexCoord2f(resX + dx,0); glVertex3f(0, -height, resX + dx);
+      glTexCoord2f(resX,1-height); glVertex3f(0, -height, resX);
+      glTexCoord2f(resX + dx,1-height); glVertex3f(0, -height, resX + dx);
       glTexCoord2f(resX + dx,heightmap[0][x + 1] + 1); glVertex3f(0, heightmap[0][x + 1], resX + dx);
       glTexCoord2f(resX,heightmap[0][x] + 1); glVertex3f(0, heightmap[0][x], resX);
    }
@@ -318,8 +369,8 @@ static void stone(double x, double y, double z, double dx, double dy, double dz,
    {
       float dx = 1 / (float)resolution;
       float resX = x / (float)resolution;
-      glTexCoord2f(resX,0); glVertex3f(1, -height, resX);
-      glTexCoord2f(resX + dx,0); glVertex3f(1, -height, resX + dx);
+      glTexCoord2f(resX,1-height); glVertex3f(1, -height, resX);
+      glTexCoord2f(resX + dx,1-height); glVertex3f(1, -height, resX + dx);
       glTexCoord2f(resX + dx,heightmap[resolution][x + 1] + 1); glVertex3f(1, heightmap[resolution][x + 1], resX + dx);
       glTexCoord2f(resX,heightmap[resolution][x] + 1); glVertex3f(1, heightmap[resolution][x], resX);
    }
@@ -402,17 +453,18 @@ static void terrain(double x, double y, double z, double dx, double dy, double d
    glMaterialfv(GL_FRONT_AND_BACK,GL_EMISSION,Emission);
 
    float heightmap[resolution + 1][resolution + 1];
-   generateHeightMap(resolution + 1, heightmap);
+   float heightmapScale = 0.2;
+   generateHeightMap(heightmapScale, resolution + 1, heightmap);
    glPushMatrix();
    glTranslated(x, y, z);
    glScaled(dx, dy, dz);
-   surface(x, y, z, dx, dy, dz, heightmap);
+   surface(x, y, z, dx, dy, dz, heightmap, heightmapScale);
    stone(x, y, z, dx, dy, dz, heightmap);
    glPopMatrix();
 
    glPushMatrix();
-   glTranslated(x, y - dy * 2, z);
-   glScaled(dx, dy, dz);
+   glTranslated(x, y - dy, z);
+   glScaled(dx, dy * 0.5, dz);
    lava();
    glPopMatrix();
 }
