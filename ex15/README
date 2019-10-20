@@ -1,22 +1,21 @@
-ex15: Textures and Lighting
+hw6: textures
 
-Willem A. (Vlakkies) Schreuder
+Michael Yoshimura
 CSCI4229/5229 Fall 2019
 
-Demonstrates using lighting and textures.
+Demonstrates terrain generation using noise.
+Uses Gouraud shading to calculate the terrain.
+
+CREDIT; Noise functions taken from https://github.com/czinn/perlin/blob/master/perlintest.c
+and followed this tutorial to polish the terrain generation https://www.redblobgames.com/maps/terrain-from-noise/#noise
 
 Key bindings
   l          Toggle lighting on/off
-  t          Change textures
-  m          Toggles texture mode modulate/replace
   a/A        decrease/increase ambient light
   d/D        decrease/increase diffuse light
-  s/S        decrease/increase specular light
-  e/E        decrease/increase emitted light
-  n/N        Decrease/increase shininess
   []         Lower/rise light
   x          Toggle axes
   arrows     Change view angle
-  PgDn/PgUp  Zoom in and out
+  8/9        Zoom in and out
   0          Reset view angle
   ESC        Exit

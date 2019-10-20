@@ -1,16 +1,13 @@
 /*
- *  Textures and Lighting
+ *  Terrain generation using noise
  *
- *  Demonstrates using lighting and textures.
+ *  CREDIT; Noise functions taken from https://github.com/czinn/perlin/blob/master/perlintest.c
+ *  and followed this tutorial to polish the terrain generation https://www.redblobgames.com/maps/terrain-from-noise/#noise
  *
  *  Key bindings:
  *  l          Toggle lighting on/off
- *  t          Change textures
  *  a/A        decrease/increase ambient light
  *  d/D        decrease/increase diffuse light
- *  s/S        decrease/increase specular light
- *  e/E        decrease/increase emitted light
- *  n/N        Decrease/increase shininess
  *  []         Lower/rise light
  *  x          Toggle axes
  *  arrows     Change view angle
@@ -19,8 +16,7 @@
  *  ESC        Exit
  */
 #include "CSCIx229.h"
-int ntex=0;       //  Cube faces
-int axes=1;       //  Display axes
+int axes=0;       //  Display axes
 int th=0;         //  Azimuth of view angle
 int ph=0;         //  Elevation of view angle
 int light=1;      //  Lighting
@@ -28,18 +24,16 @@ int rep=1;        //  Repitition
 double asp=1;     //  Aspect ratio
 double dim=3.0;   //  Size of world
 // Light values
-int emission  =   0;  // Emission intensity (%)
 int ambient   =  30;  // Ambient intensity (%)
 int diffuse   = 100;  // Diffuse intensity (%)
-int specular  =   0;  // Specular intensity (%)
-int shininess =   0;  // Shininess (power of two)
-float shiny   =   1;    // Shininess (value)
 int zh        =  90;  // Light azimuth
 float ylight  =   0;  // Elevation of light
 unsigned int texture[7]; // Texture names
 
 // Other Constants
-int resolution = 128;
+int resolution = 512;
+float ** heightmap;
+float heightmapScale = 0.2;
 
 void elementWiseSubtract(float v1[3], float v2[3], float v3[3])
 {
@@ -126,7 +120,7 @@ double pnoise2d(double x, double y, double persistence, int octaves, int seed) {
  * END third party noise functions
  */
 
-void normalizeHeightmap(float scale, int verticesRes, float heightmap[verticesRes][verticesRes])
+void normalizeHeightmap(int verticesRes)
  {
    float maxHeight = 0;
    float minHeight = 0;
@@ -150,9 +144,9 @@ void normalizeHeightmap(float scale, int verticesRes, float heightmap[verticesRe
    {
       for(int z = 0; z < verticesRes; z++)
       {
-         heightmap[x][z] -= minHeight;
-         heightmap[x][z] *= rescale;
-         heightmap[x][z] = pow(heightmap[x][z], 2.50) * scale;
+         heightmap[x][z] -= minHeight; // Make all heights positive
+         heightmap[x][z] *= rescale; // Scale height from 0 to 1
+         heightmap[x][z] = pow(heightmap[x][z], 2.50) * heightmapScale; // Other stuff to make the terrain look better
       }
    }
  }
@@ -160,8 +154,15 @@ void normalizeHeightmap(float scale, int verticesRes, float heightmap[verticesRe
 /*
  * Generate the height map for the mountains
  */
-static void generateHeightMap(float scale, int verticesRes, float heightmap[verticesRes][verticesRes])
+static void generateHeightMap(int verticesRes)
 {
+   heightmap = malloc((resolution + 1) * sizeof(float*));
+   for(int i = 0; i < resolution + 1; i++)
+   {
+      float * row = malloc((resolution + 1) * sizeof(float));
+      heightmap[i] = row;
+   }
+
    for(int x = 0; x < verticesRes; x++)
    {
       for(int z = 0; z < verticesRes; z++)
@@ -172,16 +173,16 @@ static void generateHeightMap(float scale, int verticesRes, float heightmap[vert
          float nx = x * maxFrequency - 0.5;
          float nz = z * maxFrequency - 0.5;
 
-         heightmap[x][z] = pnoise2d(nx, nz, 1.4, 5, 2555);
+         heightmap[x][z] = pnoise2d(nx, nz, 2, 5, 2555);
       }
    }
-   normalizeHeightmap(scale, verticesRes, heightmap);
+   normalizeHeightmap(verticesRes);
 }
 
 /*
  * Draw the mountains on the surface
  */
-static void surface(double x, double y, double z, double dx, double dy, double dz, float heightmap[resolution + 1][resolution + 1], float heightmapScale)
+static void surface()
 {
    int verticesRes = resolution + 1;
    int numIndices = resolution * resolution * 6;
@@ -194,7 +195,7 @@ static void surface(double x, double y, double z, double dx, double dy, double d
 
    float squareSize = 1.0 / resolution;
 
-   // Define the vertices and the textures
+   // Define the vertices, colors and the textures
    // the x and z value are simply the coordinates of a square divided by the number of squares
    // the y is the heightmap
    for(int x = 0; x < verticesRes; x++)
@@ -210,6 +211,7 @@ static void surface(double x, double y, double z, double dx, double dy, double d
          vertices[vertexAddr + 1] = heightmap[x][z];
          vertices[vertexAddr + 2] = tz;
 
+         // Determine colors
          if (heightmap[x][z] / heightmapScale < 0.05) // Water color
          {
             rgb[vertexAddr] = 0.05;
@@ -223,12 +225,14 @@ static void surface(double x, double y, double z, double dx, double dy, double d
             rgb[vertexAddr + 2] = heightmap[x][z] / heightmapScale;
          }
 
+         // Determine textures
          textures[textureAddr] = tx * 8;
          textures[textureAddr + 1] = tz * 8;
       }
    }
 
    // Define each square as two triangles, both going counterclockwise
+   // Also apply gouraud shading to this surface by adding the normal of every triangle to its vertices
    for(int x = 0; x < resolution; x++)
    {
       for(int z = 0; z < resolution; z++)
@@ -249,7 +253,7 @@ static void surface(double x, double y, double z, double dx, double dy, double d
          indices[indexArr + 4] = vx10;
          indices[indexArr + 5] = vx11;
 
-         // Normal calculation
+         // gouraud normal calculation
          float toCross1[3];
          float toCross2[3];
          float cross[3];
@@ -312,21 +316,25 @@ static void surface(double x, double y, double z, double dx, double dy, double d
 
 /*
  * Draw the stone on the side going up to the mountains
+ * It is complicated because the top of the rectangles have to of the same height of the mountains
  */
-static void stone(double x, double y, double z, double dx, double dy, double dz, float heightmap[resolution + 1][resolution + 1])
+static void stone()
 {
    glBindTexture(GL_TEXTURE_2D, texture[0]);
    glEnable(GL_TEXTURE_2D);
 
-   float height = 0.5;
+   float height = 0.5; // Determines how far below the stone reaches before it ends
 
    // Back
    glBegin(GL_QUADS);
    glNormal3f( 0, 0, -1);
    for(int x = 0; x < resolution; x++)
    {
-      float dx = 1 / (float)resolution;
-      float resX = x / (float)resolution;
+      float dx = 1 / (float)resolution; // the width of a single heighmap variation
+      float resX = x / (float)resolution; // The position of the side
+
+      // Vertices and textures determined by the heightmap at the top, which makes things complicated
+      // The texture have to be specified by the heightmap as well otherwise they get squished in weird ways
       glTexCoord2f(resX, 1-height); glVertex3f(resX, -height, 0);
       glTexCoord2f(resX + dx,  1-height); glVertex3f(resX + dx, -height, 0);
       glTexCoord2f(resX + dx, heightmap[x + 1][0] + 1); glVertex3f(resX + dx, heightmap[x + 1][0], 0);
@@ -442,24 +450,24 @@ static void lava()
    glDisable(GL_TEXTURE_2D);
 }
 
+/*
+ * Generate the whole terrain object: the top, stone, and lava
+ */
 static void terrain(double x, double y, double z, double dx, double dy, double dz)
 {
    //  Set specular color to white
    float white[] = {1,1,1,1};
-   float Emission[]  = {0.0,0.0,0.01*emission,1.0};
+   float Emission[]  = {0.0,0.0,0.0,1.0};
 
-   glMaterialf(GL_FRONT_AND_BACK,GL_SHININESS,shiny);
+   glMaterialf(GL_FRONT_AND_BACK,GL_SHININESS,1);
    glMaterialfv(GL_FRONT_AND_BACK,GL_SPECULAR,white);
    glMaterialfv(GL_FRONT_AND_BACK,GL_EMISSION,Emission);
 
-   float heightmap[resolution + 1][resolution + 1];
-   float heightmapScale = 0.2;
-   generateHeightMap(heightmapScale, resolution + 1, heightmap);
    glPushMatrix();
    glTranslated(x, y, z);
    glScaled(dx, dy, dz);
-   surface(x, y, z, dx, dy, dz, heightmap, heightmapScale);
-   stone(x, y, z, dx, dy, dz, heightmap);
+   surface();
+   stone();
    glPopMatrix();
 
    glPushMatrix();
@@ -512,7 +520,7 @@ void display()
       //  Translate intensity to color vectors
       float Ambient[]   = {0.01*ambient ,0.01*ambient ,0.01*ambient ,1.0};
       float Diffuse[]   = {0.01*diffuse ,0.01*diffuse ,0.01*diffuse ,1.0};
-      float Specular[]  = {0.01*specular,0.01*specular,0.01*specular,1.0};
+      float Specular[]  = {0.0,0.0,0.0,1.0};
       //  Light direction
       float Position[]  = {5*Cos(zh),ylight,5*Sin(zh),1};
       //  Draw light position as ball (still no lighting here)
@@ -565,7 +573,7 @@ void display()
    if (light)
    {
       glWindowPos2i(5,25);
-      Print("Ambient=%d  Diffuse=%d Specular=%d Emission=%d Shininess=%.0f",ambient,diffuse,specular,emission,shiny);
+      Print("Ambient=%d  Diffuse=%d",ambient,diffuse);
    }
    //  Render the scene and make it visible
    ErrCheck("display");
@@ -628,9 +636,6 @@ void key(unsigned char ch,int x,int y)
    //  Toggle lighting
    else if (ch == 'l' || ch == 'L')
       light = 1-light;
-   //  Toggle textures mode
-   else if (ch == 't')
-      ntex = 1-ntex;
    //  Light elevation
    else if (ch=='[')
       ylight -= 0.1;
@@ -646,21 +651,6 @@ void key(unsigned char ch,int x,int y)
       diffuse -= 5;
    else if (ch=='D' && diffuse<100)
       diffuse += 5;
-   //  Specular level
-   else if (ch=='s' && specular>0)
-      specular -= 5;
-   else if (ch=='S' && specular<100)
-      specular += 5;
-   //  Emission level
-   else if (ch=='e' && emission>0)
-      emission -= 5;
-   else if (ch=='E' && emission<100)
-      emission += 5;
-   //  Shininess level
-   else if (ch=='n' && shininess>-1)
-      shininess -= 1;
-   else if (ch=='N' && shininess<7)
-      shininess += 1;
    //  Repitition
    else if (ch=='+')
       rep++;
@@ -672,8 +662,6 @@ void key(unsigned char ch,int x,int y)
    // decrease dim
    else if (ch == '9' && dim>1)
       dim -= 0.1;
-   //  Translate shininess power to value (-1 => 0)
-   shiny = shininess<0 ? 0 : pow(2.0,shininess);
    //  Reproject
    Project(45,asp,dim);
    //  Tell GLUT it is necessary to redisplay the scene
@@ -698,6 +686,7 @@ void reshape(int width,int height)
  */
 int main(int argc,char* argv[])
 {
+   generateHeightMap(resolution + 1);
 
    //  Initialize GLUT
    glutInit(&argc,argv);
@@ -718,5 +707,12 @@ int main(int argc,char* argv[])
    //  Pass control to GLUT so it can interact with the user
    ErrCheck("init");
    glutMainLoop();
+
+   for(int i = 0; i < resolution + 1; i++)
+   {
+      free(heightmap[i]);
+   }
+   free(heightmap);
+
    return 0;
 }
