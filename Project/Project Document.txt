@@ -1,0 +1,13 @@
+TECHNOLOGIES
+    PyOpenGL + networkx
+
+2 weeks from now
+Project Progress Report is November 9th, where we want to have the base application already done.
+
+Class project review is is about 5 weeks away, December 1.
+
+The project presentation for bio networks starts December 2.
+
+The project is about 6 weeks away (December 10).
+
+The paper for bio networks is December 16.
