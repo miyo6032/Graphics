@@ -1,5 +1,14 @@
-TECHNOLOGIES
-    PyOpenGL + networkx
+Project Requirements
+    Basic 3d spring rendering though a loadable network
+    Selection of nodes to edit properties
+    Show flow through a network
+    Translucent surface wrapping around different communities
+    Minimal interface
+    Edit properies of a node
+    Highlighting motifs
+    Color based on data
+    Topilogical rendering of a 2d network
+    Fog/cloud effect
 
 2 weeks from now
 Project Progress Report is November 9th, where we want to have the base application already done.
