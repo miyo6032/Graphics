@@ -1,5 +1,7 @@
 Project Requirements
     Basic 3d spring rendering though a loadable network
+        Spheres and lines
+
     Selection of nodes to edit properties
     Show flow through a network
     Translucent surface wrapping around different communities
@@ -7,6 +9,8 @@ Project Requirements
     Edit properies of a node
     Highlighting motifs
     Color based on data
+
+Optional
     Topilogical rendering of a 2d network
     Fog/cloud effect
 
