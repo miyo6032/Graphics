@@ -1,10 +1,17 @@
-attribute vec3 Vertex_position;
-attribute vec3 Vertex_normal;
+attribute vec3 vertex_position; // The vertex position
+attribute vec3 vertex_normal; // The normal
+
+// The offset from model space to world space
+// Apparently people use a matrix for this, but whatever,
+// I'll learn that eventually maybe
 uniform vec3 offset;
-varying vec3 baseNormal;
+
+out vec3 frag_pos; // Outputs the vertex position in world space
+out vec3 normal; // Send the normal along to the fragment shader
+
 void main() {
-    gl_Position = gl_ModelViewProjectionMatrix * vec4(
-        Vertex_position + offset, 1.0
-    );
-    baseNormal = gl_NormalMatrix * normalize(Vertex_normal);
+    vec3 world_vec3 = vertex_position + offset;
+    gl_Position = gl_ModelViewProjectionMatrix * vec4(world_vec3, 1.0);
+    normal = normalize(vertex_normal);
+    frag_pos = world_vec3;
 }
