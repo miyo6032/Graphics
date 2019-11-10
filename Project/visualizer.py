@@ -7,13 +7,13 @@ from OpenGL.GL import shaders
 from glm import *
 import numpy as np
 import networkx as nx
-import OpenGLContext.scenegraph.basenodes as basenodes
 
-# CREDIT
+# CREDIT from these tutorials
 # https://www.labri.fr/perso/nrougier/python-opengl/#about-this-book
 # http://pyopengl.sourceforge.net/context/tutorials/shader_1.html
 # https://paroj.github.io/gltut/index.html
 # https://schneide.blog/2016/07/15/generating-an-icosphere-in-c/
+# https://learnopengl.com/Getting-started/OpenGL
 
 class Icosphere():
     def icosahedron(self):
@@ -69,9 +69,6 @@ class Icosphere():
         return vertices, triangles
 
 class Renderer:
-    def __init__(self, graph):
-        self.graph = graph
-
     def approxCos(self, angle):
         return np.cos(3.1415926/180*angle)
 
@@ -96,39 +93,41 @@ class Renderer:
             print(err)
             exit()
 
-    def render(self, resolution, tick):
+    def get_locations(self, shader, uniforms, attributes):
+        locations = {}
+        for uniform in uniforms:
+            location = gl.glGetUniformLocation( shader, uniform )
+            if location in (None,-1):
+                print('Warning, no uniform: %s'%( uniform ))
+            locations[uniform] = location
+
+        for attribute in attributes:
+            location = gl.glGetAttribLocation( shader, attribute )
+            if location in (None,-1):
+                print('Warning, no attribute: %s'%( attribute ))
+            locations[attribute] = location
+
+        return locations
+
+    def render(self, tick, offset, camera_pos, light_pos):
         pass
 
 class RenderSphere(Renderer):
-    def __init__(self, graph):
-        super().__init__(graph)
+    def __init__(self, radius = 1, subdivisions = 1):
         self.shader = self.read_shaders("test.vert", "test.frag")
 
-        self.locations = {}
+        uniforms = ['global_ambient','light_pos','material_ambient', 'offset', 'camera_pos', 'object_color', 'light_color']
+        attibutes = ['vertex_position', 'vertex_normal']
+        self.locations = self.get_locations(self.shader, uniforms, attibutes)
 
-        for uniform in ('global_ambient','light_pos','material_ambient', 'offset', 'camera_pos', 'object_color', 'light_color'):
-            location = gl.glGetUniformLocation( self.shader, uniform )
-            if location in (None,-1):
-                print('Warning, no uniform: %s'%( uniform ))
-            self.locations[uniform] = location
-
-        for attribute in ('vertex_position', 'vertex_normal'):
-            location = gl.glGetAttribLocation( self.shader, attribute )
-            if location in (None,-1):
-                print('Warning, no attribute: %s'%( attribute ))
-            self.locations[attribute] = location
-
-        vertices, triangles = Icosphere().make_icosphere(3)
-        vertex_data = np.array([[f for f in vec] for vec in vertices], 'f')
+        vertices, triangles = Icosphere().make_icosphere(subdivisions)
+        vertex_data = np.array([[f * radius for f in vec] for vec in vertices], 'f')
         self.indices = np.array([f for vec in triangles for f in vec], 'uint32')
         self.vertex_vbo = vbo.VBO(vertex_data)
         self.indices_vbo = vbo.VBO(self.indices)
         self.stride = len(vertex_data[0])*4 # n items per row, and each row is 4 bytes
 
-    def render(self, resolution, tick, offset=(0,0,0), camera_pos=(0, 0, 0)):
-        degree = np.round((tick * 0.1)) % 360;
-        light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
-
+    def render(self, tick, offset, camera_pos, light_pos):
         shaders.glUseProgram(self.shader)
         try:
             self.vertex_vbo.bind()
@@ -168,7 +167,7 @@ class RenderSphere(Renderer):
 # In charge of rendering a spring representation of the network
 class SpringNetworkRenderer(Renderer):
     def __init__(self, graph):
-        super().__init__(graph)
+        self.graph = graph
         self.sphere_radius = 10
         self.sphere_data = np.array([[0, 0, 1]], 'f')
 
@@ -176,7 +175,7 @@ class SpringNetworkRenderer(Renderer):
 
         self.locations = {}
         self.convertNodes()
-        self.sphere_renderer = RenderSphere(graph)
+        self.sphere_renderer = RenderSphere(radius=0.1, subdivisions=2)
 
     def convertNodes(self):
         array = []
@@ -185,15 +184,17 @@ class SpringNetworkRenderer(Renderer):
 
         self.sphere_data = np.array(array, 'f')
 
-    def render(self, resolution, tick):
+    def render(self, tick, offset, camera_pos, light_pos):
+        degree = np.round((tick * 0.1)) % 360;
+        light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
+
         for pos in self.sphere_data:
-            self.sphere_renderer.render(resolution, tick, pos[:3])
+            self.sphere_renderer.render(tick, pos[:3], camera_pos, light_pos)
 
 class Context:
     def __init__(self, graph):
         self.graph = graph
         self.renderers = []
-        self.resolution = (512, 512)
         self.tick = 0
         self.aspect = 1
         self.angle = 0
@@ -212,7 +213,7 @@ class Context:
         glut.glutInit() # Creates the opengl context
         glut.glutInitDisplayMode(glut.GLUT_DOUBLE | glut.GLUT_RGBA | glut.GLUT_DEPTH)
         glut.glutCreateWindow('3D Network Visualizer')
-        glut.glutReshapeWindow(*self.resolution)
+        glut.glutReshapeWindow(512, 512)
         glut.glutReshapeFunc(self.reshape)
         glut.glutDisplayFunc(self.display)
         glut.glutKeyboardFunc(self.keyboard)
@@ -252,7 +253,7 @@ class Context:
         glu.gluLookAt(Ex,Ey,Ez , 0,0,0 , 0, self.approxCos(self.elevation),0);
 
         for renderer in self.renderers:
-            renderer.render(self.resolution, self.tick, camera_pos=(Ex, Ey, Ez))
+            renderer.render(self.tick, (0, 0, 0), (Ex, Ey, Ez), None)
 
         gl.glBegin(gl.GL_LINES);
         gl.glVertex3d(0.0,0.0,0.0);
@@ -272,7 +273,6 @@ class Context:
         glut.glutPostRedisplay()
 
     def reshape(self, width,height):
-        self.resolution = (width, height)
         gl.glViewport(0, 0, width, height)
         self.aspect = width / height if height > 0 else 1
         self.project()
@@ -287,5 +287,5 @@ class Context:
 graph = nx.fast_gnp_random_graph(100, 0.5)
 pos = nx.spring_layout(graph)
 context = Context(graph)
-context.renderers.append(RenderSphere(graph))
+context.renderers.append(SpringNetworkRenderer(graph))
 glut.glutMainLoop()
