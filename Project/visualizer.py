@@ -111,66 +111,77 @@ class Renderer:
 
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
         pass
-    
-# In charge of rendering a spring representation of the network
-class SpringNetworkRenderer(Renderer):
-    def __init__(self, graph):
-        subdivisions = 4
-        radius = 0.1
-        self.positions = [glm.vec3(pos) for pos in nx.spring_layout(graph, dim=3).values()]
 
+class RenderSphere(Renderer):
+    def __init__(self, radius = 1, subdivisions = 1):
         self.shader = self.read_shaders("test.vert", "test.frag")
+
         uniforms = ['global_ambient','light_pos','material_ambient', 'camera_pos', 'object_color', 'light_color', 'model_mat', 'view_mat', 'proj_mat']
         attibutes = ['vertex_position', 'vertex_normal']
         self.locations = self.get_locations(self.shader, uniforms, attibutes)
 
         vertices, triangles = Icosphere().make_icosphere(subdivisions)
-
-        vertices = [vec * radius for vec in vertices] # Resize the radius of the sphere
-        self.vertex_data = np.array([[*vec] for vec in vertices], 'f')
-        self.indices = np.array([index for vec in triangles for index in vec], 'uint32')
-
-        self.vertex_vbo = vbo.VBO(self.vertex_data)
+        vertex_data = np.array([[f * radius for f in vec] for vec in vertices], 'f')
+        self.indices = np.array([f for vec in triangles for f in vec], 'uint32')
+        self.vertex_vbo = vbo.VBO(vertex_data)
         self.indices_vbo = vbo.VBO(self.indices)
-        self.stride = len(self.vertex_data[0])*4 # n items per row, and each row is 4 bytes
+        self.stride = len(vertex_data[0])*4 # n items per row, and each row is 4 bytes
 
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
-        degree = np.round((tick * 0.1)) % 360;
-        light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
-
+        model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset))
         shaders.glUseProgram(self.shader)
         try:
             self.vertex_vbo.bind()
             try:
-                for pos in self.positions:
-                    model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset) + pos)
-                    gl.glUniform3f( self.locations['camera_pos'], *camera_pos )
-                    gl.glUniform3f( self.locations['global_ambient'], .25,.25,.25 )
-                    gl.glUniform3f( self.locations['material_ambient'], .5,.5,.5 )
-                    gl.glUniform3f( self.locations['object_color'], .8,.5,.5 )
-                    gl.glUniform3f( self.locations['light_color'], 1,1,1 )
-                    gl.glUniform3f( self.locations['light_pos'], *light_pos)
-                    gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
-                    gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
-                    gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
+                gl.glUniform3f( self.locations['camera_pos'], *camera_pos )
+                gl.glUniform3f( self.locations['global_ambient'], .25,.25,.25 )
+                gl.glUniform3f( self.locations['material_ambient'], .5,.5,.5 )
+                gl.glUniform3f( self.locations['object_color'], .8,.5,.5 )
+                gl.glUniform3f( self.locations['light_color'], 1,1,1 )
+                gl.glUniform3f( self.locations['light_pos'], *light_pos)
+                gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
+                gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
+                gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
 
-                    gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
-                    gl.glEnableVertexAttribArray( self.locations["vertex_normal"] )
-                    gl.glVertexAttribPointer(
-                        self.locations["vertex_position"],
-                        3, gl.GL_FLOAT,False, self.stride, self.vertex_vbo
-                    )
-                    gl.glVertexAttribPointer(
-                        self.locations["vertex_normal"],
-                        3, gl.GL_FLOAT,False, self.stride, self.vertex_vbo
-                    )
-                    gl.glDrawElements(gl.GL_TRIANGLES, len(self.indices), gl.GL_UNSIGNED_INT, self.indices)
+                gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
+                gl.glEnableVertexAttribArray( self.locations["vertex_normal"] )
+                gl.glVertexAttribPointer(
+                    self.locations["vertex_position"],
+                    3, gl.GL_FLOAT,False, self.stride, self.vertex_vbo
+                )
+                gl.glVertexAttribPointer(
+                    self.locations["vertex_normal"],
+                    3, gl.GL_FLOAT,False, self.stride, self.vertex_vbo
+                )
+                gl.glDrawElements(gl.GL_TRIANGLES, len(self.indices), gl.GL_UNSIGNED_INT, self.indices)
             finally:
                 self.vertex_vbo.unbind()
                 gl.glDisableVertexAttribArray( self.locations["vertex_position"] )
                 gl.glDisableVertexAttribArray( self.locations["vertex_normal"] )
         finally:
             shaders.glUseProgram(0) # Go back to the legacy pipeline
+
+# In charge of rendering a spring representation of the network
+class SpringNetworkRenderer(Renderer):
+    def __init__(self, graph):
+        self.graph = graph
+        self.sphere_data = np.array([[0, 0, 1]], 'f')
+
+        self.convertNodes()
+        self.sphere_renderer = RenderSphere(radius=0.1, subdivisions=2)
+
+    def convertNodes(self):
+        positions = [pos for pos in nx.spring_layout(self.graph, dim=3).values()]
+        self.sphere_data = np.array(positions, 'f')
+
+    def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
+        degree = np.round((tick * 0.1)) % 360;
+        light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
+
+        for pos in self.sphere_data:
+            self.sphere_renderer.render(tick, pos, camera_pos, light_pos, view_mat, proj_mat)
+
+        self.sphere_renderer.render(tick, light_pos, camera_pos, light_pos, view_mat, proj_mat)
 
 class Context:
     def __init__(self, graph):
@@ -186,14 +197,15 @@ class Context:
         self.setup_camera()
 
     def setup_camera(self):
+        self.camera_pos = glm.vec3(0, 0, -3)
+        camera_target = glm.vec3(0)
+        camera_dir = self.camera_pos - camera_target
 
         Ex = -2*self.dim*self.approxSin(self.angle)*self.approxCos(self.elevation);
         Ey = +2*self.dim*self.approxSin(self.elevation);
         Ez = +2*self.dim*self.approxCos(self.angle)*self.approxCos(self.elevation);
-        self.camera_pos = glm.vec3(Ex, Ey, Ez)
-        camera_target = glm.vec3(0)
 
-        self.view_mat = glm.lookAt(self.camera_pos, camera_target, glm.vec3(0, self.approxCos(self.elevation), 0))
+        self.view_mat = glm.lookAt(glm.vec3(Ex, Ey, Ez), camera_target, glm.vec3(0, self.approxCos(self.elevation), 0))
 
     def approxCos(self, angle):
         return np.cos(3.1415926/180*angle)
@@ -236,7 +248,7 @@ class Context:
         gl.glEnable(gl.GL_DEPTH_TEST)
 
         for renderer in self.renderers:
-            renderer.render(self.tick, (0, 0, 0), self.camera_pos, (0, 2, 0), self.view_mat, self.proj_mat)
+            renderer.render(self.tick, (0, 0, 0), self.camera_pos, None, self.view_mat, self.proj_mat)
 
         err = gl.glGetError()
         if err != gl.GL_NO_ERROR:
@@ -258,7 +270,7 @@ class Context:
     def idle(self):
         self.tick = glut.glutGet(glut.GLUT_ELAPSED_TIME);
 
-graph = nx.fast_gnp_random_graph(2000, 0.5)
+graph = nx.fast_gnp_random_graph(100, 0.5)
 pos = nx.spring_layout(graph)
 context = Context(graph)
 context.renderers.append(SpringNetworkRenderer(graph))
