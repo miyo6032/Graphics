@@ -1,18 +1,44 @@
 Project Requirements
-    Basic 3d spring rendering though a loadable network
-        Spheres and lines
+    Basic 3d spring rendering though a loadable network [EASY]
+        Spheres and (cylinders or lines)
 
-    Selection of nodes to edit properties
-    Show flow through a network
-    Translucent surface wrapping around different communities
-    Minimal interface
-    Edit properies of a node
-    Highlighting motifs
-    Color based on data
+    Color based on data or based on a given partition [EASY]
+
+    Highlighting motifs [EASY]
+        Find the different motifs and highlight them
+        Should be a simple extension of the color
+
+    Implementing actual partition algorithm [EASY]
+
+    Transparency of nodes and edges [Moderate]
+
+|||||||||||||||||||||||||||||||||||||||||||||||||| Finish ^ by 11/16 (If we aren't close, we have problems)
+
+    Selection of nodes [Hard]
+        Edit properies of a node
+        Minimal interface
+        
+    Fog/cloud effect for partitions (I really want to try my hand at this) [Hard]
+
+|||||||||||||||||||||||||||||||||||||||||||||||||| Finish ^ by 11/23
+
+    Showing flow through a directed network much like in PS8 [Moderate]
+
+    Real time moving and floating (depends on networkx efficiency) [Hard]
+
+    Creating the presentation I guess [Easy]
+
+|||||||||||||||||||||||||||||||||||||||||||||||||| Finish by 11/30
+
+    Final project adjustments
+
+    Write the paper 
+
+|||||||||||||||||||||||||||||||||||||||||||||||||| Finish by December 10 and 16 respectively
 
 Optional
-    Topilogical rendering of a 2d network
-    Fog/cloud effect
+    Translucent surface wrapping around different communities (Depends on a lot the wrapping algorithm and how well we can do communities) [Hard]
+    Topilogical rendering of a 2d network [Hard]
 
 2 weeks from now
 Project Progress Report is November 9th, where we want to have the base application already done.

@@ -4,6 +4,7 @@ import OpenGL.GLUT as glut
 import OpenGL.GLU as glu
 from OpenGL.arrays import vbo
 from OpenGL.GL import shaders
+import glm
 from glm import *
 import numpy as np
 import networkx as nx
@@ -109,14 +110,14 @@ class Renderer:
 
         return locations
 
-    def render(self, tick, offset, camera_pos, light_pos):
+    def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
         pass
 
 class RenderSphere(Renderer):
     def __init__(self, radius = 1, subdivisions = 1):
         self.shader = self.read_shaders("test.vert", "test.frag")
 
-        uniforms = ['global_ambient','light_pos','material_ambient', 'offset', 'camera_pos', 'object_color', 'light_color']
+        uniforms = ['global_ambient','light_pos','material_ambient', 'camera_pos', 'object_color', 'light_color', 'model_mat', 'view_mat', 'proj_mat']
         attibutes = ['vertex_position', 'vertex_normal']
         self.locations = self.get_locations(self.shader, uniforms, attibutes)
 
@@ -127,18 +128,21 @@ class RenderSphere(Renderer):
         self.indices_vbo = vbo.VBO(self.indices)
         self.stride = len(vertex_data[0])*4 # n items per row, and each row is 4 bytes
 
-    def render(self, tick, offset, camera_pos, light_pos):
+    def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
+        model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset))
         shaders.glUseProgram(self.shader)
         try:
             self.vertex_vbo.bind()
             try:
                 gl.glUniform3f( self.locations['camera_pos'], *camera_pos )
-                gl.glUniform3f( self.locations['global_ambient'], .15,.15,.15 )
+                gl.glUniform3f( self.locations['global_ambient'], .25,.25,.25 )
                 gl.glUniform3f( self.locations['material_ambient'], .5,.5,.5 )
                 gl.glUniform3f( self.locations['object_color'], .8,.5,.5 )
                 gl.glUniform3f( self.locations['light_color'], 1,1,1 )
-                gl.glUniform3f( self.locations['offset'], *offset )
                 gl.glUniform3f( self.locations['light_pos'], *light_pos)
+                gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
+                gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
+                gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
 
                 gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
                 gl.glEnableVertexAttribArray( self.locations["vertex_normal"] )
@@ -157,12 +161,6 @@ class RenderSphere(Renderer):
                 gl.glDisableVertexAttribArray( self.locations["vertex_normal"] )
         finally:
             shaders.glUseProgram(0) # Go back to the legacy pipeline
-
-        gl.glColor3f(1, 1, 1)
-        gl.glPointSize(10)
-        gl.glBegin(gl.GL_POINTS)
-        gl.glVertex3f(*light_pos)
-        gl.glEnd()
 
 # In charge of rendering a spring representation of the network
 class SpringNetworkRenderer(Renderer):
@@ -184,12 +182,14 @@ class SpringNetworkRenderer(Renderer):
 
         self.sphere_data = np.array(array, 'f')
 
-    def render(self, tick, offset, camera_pos, light_pos):
+    def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
         degree = np.round((tick * 0.1)) % 360;
         light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
 
         for pos in self.sphere_data:
-            self.sphere_renderer.render(tick, pos[:3], camera_pos, light_pos)
+            self.sphere_renderer.render(tick, pos[:3], camera_pos, light_pos, view_mat, proj_mat)
+
+        self.sphere_renderer.render(tick, light_pos, camera_pos, light_pos, view_mat, proj_mat)
 
 class Context:
     def __init__(self, graph):
@@ -202,6 +202,20 @@ class Context:
         self.fov = 55 # Field of view
         self.dim = 5 # Size of world
         self.init_glut()
+        self.setup_camera()
+
+    def setup_camera(self):
+        self.camera_pos = glm.vec3(0, 0, -3)
+        self.camera_target = glm.vec3(0)
+        self.camera_dir = self.camera_pos - self.camera_target
+        self.camera_right = glm.normalize(glm.cross(glm.vec3(0, 1, 0), self.camera_dir)) # Cross up and camera dir to get the right vector
+        self.camera_up = glm.cross(self.camera_dir, self.camera_right) # Camera up direction
+
+        Ex = -2*self.dim*self.approxSin(self.angle)*self.approxCos(self.elevation);
+        Ey = +2*self.dim*self.approxSin(self.elevation);
+        Ez = +2*self.dim*self.approxCos(self.angle)*self.approxCos(self.elevation);
+
+        self.view_mat = glm.lookAt(vec3(Ex, Ey, Ez), self.camera_target, vec3(0, self.approxCos(self.elevation), 0))
 
     def approxCos(self, angle):
         return np.cos(3.1415926/180*angle)
@@ -221,11 +235,8 @@ class Context:
         glut.glutIdleFunc(self.idle)
 
     def project(self):
-        gl.glMatrixMode(gl.GL_PROJECTION)
-        gl.glLoadIdentity()
-        glu.gluPerspective(self.fov, self.aspect, self.dim/4, 4*self.dim)
-        gl.glMatrixMode(gl.GL_MODELVIEW)
-        gl.glLoadIdentity()
+        self.proj_mat = glm.perspective(glm.radians(self.fov), self.aspect, self.dim/4, 4*self.dim);
+        self.setup_camera()
 
     def special(self, key, x, y):
         if key == glut.GLUT_KEY_RIGHT:
@@ -247,22 +258,8 @@ class Context:
         gl.glEnable(gl.GL_DEPTH_TEST)
         gl.glLoadIdentity();
 
-        Ex = -2*self.dim*self.approxSin(self.angle)*self.approxCos(self.elevation);
-        Ey = +2*self.dim*self.approxSin(self.elevation);
-        Ez = +2*self.dim*self.approxCos(self.angle)*self.approxCos(self.elevation);
-        glu.gluLookAt(Ex,Ey,Ez , 0,0,0 , 0, self.approxCos(self.elevation),0);
-
         for renderer in self.renderers:
-            renderer.render(self.tick, (0, 0, 0), (Ex, Ey, Ez), None)
-
-        gl.glBegin(gl.GL_LINES);
-        gl.glVertex3d(0.0,0.0,0.0);
-        gl.glVertex3d(5,0.0,0.0);
-        gl.glVertex3d(0.0,0.0,0.0);
-        gl.glVertex3d(0.0,5,0.0);
-        gl.glVertex3d(0.0,0.0,0.0);
-        gl.glVertex3d(0.0,0.0,5);
-        gl.glEnd();
+            renderer.render(self.tick, (0, 0, 0), self.camera_pos, None, self.view_mat, self.proj_mat)
 
         err = gl.glGetError()
         if err != gl.GL_NO_ERROR:

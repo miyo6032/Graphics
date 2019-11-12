@@ -1,3 +1,5 @@
+#version 330
+
 // uniform vec4 Light_ambient;
 // uniform vec4 Light_diffuse;
 // uniform vec4 Light_specular;
