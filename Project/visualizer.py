@@ -133,7 +133,7 @@ class RenderLine(Renderer):
                 gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
                 gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
                 gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
-                gl.glUniform4f( self.locations['line_color'], 1,1,1,1 )
+                gl.glUniform4f( self.locations['line_color'], 1,1,1,0.2 )
                 gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
                 gl.glVertexAttribPointer(self.locations["vertex_position"], 3, gl.GL_FLOAT,False, 3 * 4, self.vertex_vbo)
                 gl.glDrawArrays(gl.GL_LINES, 0, int(self.num_lines))
@@ -143,11 +143,12 @@ class RenderLine(Renderer):
         finally:
             shaders.glUseProgram(0) # Go back to the legacy pipeline
 
-# Renders a single sphere at a time
-class RenderSphere(Renderer):
-    def __init__(self, radius = 1, subdivisions = 1):
-        self.shader = self.read_shaders("test.vert", "test.frag")
+# Renders n spheres at given positions
+class RenderSpheres(Renderer):
+    def __init__(self, positions, radius = 1, subdivisions = 1):
+        self.positions = positions
 
+        self.shader = self.read_shaders("test.vert", "test.frag")
         uniforms = [
         'material.ambient', 'material.diffuse', 'material.specular', 'material.shininess',
         'light.ambient', 'light.diffuse', 'light.specular', 'light_pos',
@@ -163,7 +164,6 @@ class RenderSphere(Renderer):
         self.stride = len(vertex_data[0])*4 # n items per row, and each row is 4 bytes
 
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
-        model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset))
         shaders.glUseProgram(self.shader)
         try:
             self.vertex_vbo.bind()
@@ -177,7 +177,6 @@ class RenderSphere(Renderer):
                 gl.glUniform3f( self.locations['light.ambient'], 0.2, 0.2, 0.2 )
                 gl.glUniform3f( self.locations['light.diffuse'], 0.5, 0.5, 0.5 )
                 gl.glUniform3f( self.locations['light.specular'], 1.0, 1.0, 1.0 )
-                gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
                 gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
                 gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
 
@@ -191,7 +190,10 @@ class RenderSphere(Renderer):
                     self.locations["vertex_normal"],
                     3, gl.GL_FLOAT,False, self.stride, self.vertex_vbo
                 )
-                gl.glDrawElements(gl.GL_TRIANGLES, len(self.indices), gl.GL_UNSIGNED_INT, self.indices)
+                for position in self.positions:
+                    model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset) + glm.vec3(*position))
+                    gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
+                    gl.glDrawElements(gl.GL_TRIANGLES, len(self.indices), gl.GL_UNSIGNED_INT, self.indices)
             finally:
                 self.vertex_vbo.unbind()
                 gl.glDisableVertexAttribArray( self.locations["vertex_position"] )
@@ -202,23 +204,26 @@ class RenderSphere(Renderer):
 # In charge of rendering a spring representation of the network
 class SpringNetworkRenderer(Renderer):
     def __init__(self, graph):
-        spring_layout = nx.spring_layout(graph, dim=3, scale=3)
+        spring_layout = nx.spring_layout(graph, dim=3, scale=9)
         self.nodes = [pos for pos in spring_layout.values()]
         self.edges = [spring_layout[node] for edge in graph.edges() for node in edge]
 
-        self.sphere_renderer = RenderSphere(radius=0.1, subdivisions=2)
+        self.light_renderer = RenderSpheres([(0, 0, 0)], radius=0.05, subdivisions=2)
+        self.nodes_renderer = RenderSpheres(self.nodes, radius=0.05, subdivisions=2)
         self.line_renderer = RenderLine(self.edges)
 
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
         degree = np.round((tick * 0.1)) % 360;
         light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
 
-        for pos in self.nodes:
-            self.sphere_renderer.render(tick, pos, camera_pos, light_pos, view_mat, proj_mat)
+        self.nodes_renderer.render(tick, (0, 0, 0), camera_pos, light_pos, view_mat, proj_mat)
 
+        gl.glEnable(gl.GL_BLEND);
+        gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA);  
         self.line_renderer.render(tick, (0, 0, 0), camera_pos, light_pos, view_mat, proj_mat)
+        gl.glDisable(gl.GL_BLEND);
 
-        self.sphere_renderer.render(tick, light_pos, camera_pos, light_pos, view_mat, proj_mat)
+        self.light_renderer.render(tick, light_pos, camera_pos, light_pos, view_mat, proj_mat)
 
 class Context:
     def __init__(self, graph):
