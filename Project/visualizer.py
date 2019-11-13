@@ -112,6 +112,38 @@ class Renderer:
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
         pass
 
+# Pass in a flattened list of edges and it will render them all
+class RenderLine(Renderer):
+    def __init__(self, edges):
+        self.shader = self.read_shaders("line.vert", "line.frag")
+
+        uniforms = ['model_mat', 'view_mat', 'proj_mat', 'line_color']
+        attributes = ['vertex_position']
+        self.locations = self.get_locations(self.shader, uniforms, attributes)
+        self.vertex_vbo = vbo.VBO(np.array(edges, 'f'))
+        self.num_lines = len(edges) / 2
+
+    def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
+        model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset))
+
+        shaders.glUseProgram(self.shader)
+        try:
+            self.vertex_vbo.bind()
+            try:
+                gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
+                gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
+                gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
+                gl.glUniform4f( self.locations['line_color'], 1,1,1,1 )
+                gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
+                gl.glVertexAttribPointer(self.locations["vertex_position"], 3, gl.GL_FLOAT,False, 3 * 4, self.vertex_vbo)
+                gl.glDrawArrays(gl.GL_LINES, 0, int(self.num_lines))
+            finally:
+                self.vertex_vbo.unbind()
+                gl.glDisableVertexAttribArray( self.locations["vertex_position"] )
+        finally:
+            shaders.glUseProgram(0) # Go back to the legacy pipeline
+
+# Renders a single sphere at a time
 class RenderSphere(Renderer):
     def __init__(self, radius = 1, subdivisions = 1):
         self.shader = self.read_shaders("test.vert", "test.frag")
@@ -164,22 +196,21 @@ class RenderSphere(Renderer):
 # In charge of rendering a spring representation of the network
 class SpringNetworkRenderer(Renderer):
     def __init__(self, graph):
-        self.graph = graph
-        self.sphere_data = np.array([[0, 0, 1]], 'f')
+        spring_layout = nx.spring_layout(graph, dim=3, scale=3)
+        self.nodes = [pos for pos in spring_layout.values()]
+        self.edges = [spring_layout[node] for edge in graph.edges() for node in edge]
 
-        self.convertNodes()
         self.sphere_renderer = RenderSphere(radius=0.1, subdivisions=2)
-
-    def convertNodes(self):
-        positions = [pos for pos in nx.spring_layout(self.graph, dim=3).values()]
-        self.sphere_data = np.array(positions, 'f')
+        self.line_renderer = RenderLine(self.edges)
 
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
         degree = np.round((tick * 0.1)) % 360;
         light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
 
-        for pos in self.sphere_data:
+        for pos in self.nodes:
             self.sphere_renderer.render(tick, pos, camera_pos, light_pos, view_mat, proj_mat)
+
+        self.line_renderer.render(tick, (0, 0, 0), camera_pos, light_pos, view_mat, proj_mat)
 
         self.sphere_renderer.render(tick, light_pos, camera_pos, light_pos, view_mat, proj_mat)
 
@@ -197,15 +228,13 @@ class Context:
         self.setup_camera()
 
     def setup_camera(self):
-        self.camera_pos = glm.vec3(0, 0, -3)
-        camera_target = glm.vec3(0)
-        camera_dir = self.camera_pos - camera_target
-
         Ex = -2*self.dim*self.approxSin(self.angle)*self.approxCos(self.elevation);
         Ey = +2*self.dim*self.approxSin(self.elevation);
         Ez = +2*self.dim*self.approxCos(self.angle)*self.approxCos(self.elevation);
+        self.camera_pos = glm.vec3(Ex, Ey, Ez)
+        camera_target = glm.vec3(0)
 
-        self.view_mat = glm.lookAt(glm.vec3(Ex, Ey, Ez), camera_target, glm.vec3(0, self.approxCos(self.elevation), 0))
+        self.view_mat = glm.lookAt(self.camera_pos, camera_target, glm.vec3(0, self.approxCos(self.elevation), 0))
 
     def approxCos(self, angle):
         return np.cos(3.1415926/180*angle)
@@ -270,8 +299,7 @@ class Context:
     def idle(self):
         self.tick = glut.glutGet(glut.GLUT_ELAPSED_TIME);
 
-graph = nx.fast_gnp_random_graph(100, 0.5)
-pos = nx.spring_layout(graph)
+graph = nx.fast_gnp_random_graph(1000, 3 / 100)
 context = Context(graph)
 context.renderers.append(SpringNetworkRenderer(graph))
 glut.glutMainLoop()
