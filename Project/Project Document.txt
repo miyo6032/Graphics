@@ -1,6 +1,6 @@
 Project Requirements
-    Basic 3d spring rendering though a loadable network [EASY]
-        Spheres and (cylinders or lines)
+    [DONE]Basic 3d spring rendering though a loadable network [EASY]
+        Spheres and lines [CYLINDERS ARE UNECESSARY]
 
     Color based on data or based on a given partition [EASY]
 

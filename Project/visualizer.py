@@ -148,7 +148,10 @@ class RenderSphere(Renderer):
     def __init__(self, radius = 1, subdivisions = 1):
         self.shader = self.read_shaders("test.vert", "test.frag")
 
-        uniforms = ['global_ambient','light_pos','material_ambient', 'camera_pos', 'object_color', 'light_color', 'model_mat', 'view_mat', 'proj_mat']
+        uniforms = [
+        'material.ambient', 'material.diffuse', 'material.specular', 'material.shininess',
+        'light.ambient', 'light.diffuse', 'light.specular', 'light_pos',
+        'camera_pos', 'model_mat', 'view_mat', 'proj_mat']
         attibutes = ['vertex_position', 'vertex_normal']
         self.locations = self.get_locations(self.shader, uniforms, attibutes)
 
@@ -166,11 +169,14 @@ class RenderSphere(Renderer):
             self.vertex_vbo.bind()
             try:
                 gl.glUniform3f( self.locations['camera_pos'], *camera_pos )
-                gl.glUniform3f( self.locations['global_ambient'], .25,.25,.25 )
-                gl.glUniform3f( self.locations['material_ambient'], .5,.5,.5 )
-                gl.glUniform3f( self.locations['object_color'], .8,.5,.5 )
-                gl.glUniform3f( self.locations['light_color'], 1,1,1 )
+                gl.glUniform3f( self.locations['material.ambient'], 1.0, 0.5, 0.3 )
+                gl.glUniform3f( self.locations['material.diffuse'], 1.0, 0.5, 0.3 )
+                gl.glUniform3f( self.locations['material.specular'], 0.5, 0.5, 0.5 )
+                gl.glUniform1f( self.locations['material.shininess'], 32 )
                 gl.glUniform3f( self.locations['light_pos'], *light_pos)
+                gl.glUniform3f( self.locations['light.ambient'], 0.2, 0.2, 0.2 )
+                gl.glUniform3f( self.locations['light.diffuse'], 0.5, 0.5, 0.5 )
+                gl.glUniform3f( self.locations['light.specular'], 1.0, 1.0, 1.0 )
                 gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
                 gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
                 gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
@@ -299,7 +305,7 @@ class Context:
     def idle(self):
         self.tick = glut.glutGet(glut.GLUT_ELAPSED_TIME);
 
-graph = nx.fast_gnp_random_graph(1000, 3 / 100)
+graph = nx.fast_gnp_random_graph(100, 3 / 100)
 context = Context(graph)
 context.renderers.append(SpringNetworkRenderer(graph))
 glut.glutMainLoop()
