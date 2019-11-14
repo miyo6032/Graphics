@@ -2,7 +2,7 @@ Project Requirements
     [DONE]Basic 3d spring rendering though a loadable network [EASY]
         Spheres and lines [CYLINDERS ARE UNECESSARY]
 
-    Color based on data or based on a given partition [EASY]
+    [DONE]Color based on data or based on a given partition [EASY]
 
     Highlighting motifs [EASY]
         Find the different motifs and highlight them
@@ -11,6 +11,8 @@ Project Requirements
     Implementing actual partition algorithm [EASY]
 
     Transparency of nodes and edges [Moderate]
+
+    Bloom effect [Easy]
 
 |||||||||||||||||||||||||||||||||||||||||||||||||| Finish ^ by 11/16 (If we aren't close, we have problems)
 

@@ -7,6 +7,7 @@ from OpenGL.GL import shaders
 import glm
 import numpy as np
 import networkx as nx
+import colorsys
 
 # CREDIT from these tutorials
 # https://www.labri.fr/perso/nrougier/python-opengl/#about-this-book
@@ -121,7 +122,7 @@ class RenderLine(Renderer):
         attributes = ['vertex_position']
         self.locations = self.get_locations(self.shader, uniforms, attributes)
         self.vertex_vbo = vbo.VBO(np.array(edges, 'f'))
-        self.num_lines = len(edges) / 2
+        self.num_lines = len(edges)
 
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
         model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset))
@@ -143,10 +144,24 @@ class RenderLine(Renderer):
         finally:
             shaders.glUseProgram(0) # Go back to the legacy pipeline
 
+class Material():
+    def __init__(self, ambient, diffuse, specular, shininess):
+        self.ambient = ambient
+        self.diffuse = diffuse
+        self.specular = specular
+        self.shininess = shininess
+
+    def __repr__(self):
+        return "Ambient: ({}, {}, {}), Diffuse: ({}, {}, {}), Specular: ({}, {}, {}), Shininess: {}".format(
+            *self.ambient, *self.diffuse, *self.specular, self.shininess)
+
 # Renders n spheres at given positions
 class RenderSpheres(Renderer):
-    def __init__(self, positions, radius = 1, subdivisions = 1):
+    def __init__(self, positions, colors, light_color=Material(glm.vec3(0.2), glm.vec3(0.5), glm.vec3(1.0), 0), 
+    radius = 1, subdivisions = 1):
         self.positions = positions
+        self.colors = colors
+        self.light_color = light_color
 
         self.shader = self.read_shaders("test.vert", "test.frag")
         uniforms = [
@@ -169,14 +184,10 @@ class RenderSpheres(Renderer):
             self.vertex_vbo.bind()
             try:
                 gl.glUniform3f( self.locations['camera_pos'], *camera_pos )
-                gl.glUniform3f( self.locations['material.ambient'], 1.0, 0.5, 0.3 )
-                gl.glUniform3f( self.locations['material.diffuse'], 1.0, 0.5, 0.3 )
-                gl.glUniform3f( self.locations['material.specular'], 0.5, 0.5, 0.5 )
-                gl.glUniform1f( self.locations['material.shininess'], 32 )
                 gl.glUniform3f( self.locations['light_pos'], *light_pos)
-                gl.glUniform3f( self.locations['light.ambient'], 0.2, 0.2, 0.2 )
-                gl.glUniform3f( self.locations['light.diffuse'], 0.5, 0.5, 0.5 )
-                gl.glUniform3f( self.locations['light.specular'], 1.0, 1.0, 1.0 )
+                gl.glUniform3f( self.locations['light.ambient'], *self.light_color.ambient )
+                gl.glUniform3f( self.locations['light.diffuse'], *self.light_color.diffuse )
+                gl.glUniform3f( self.locations['light.specular'], *self.light_color.specular )
                 gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
                 gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
 
@@ -190,9 +201,15 @@ class RenderSpheres(Renderer):
                     self.locations["vertex_normal"],
                     3, gl.GL_FLOAT,False, self.stride, self.vertex_vbo
                 )
-                for position in self.positions:
+                for position, material in zip(self.positions, self.colors):
+                    gl.glUniform3f( self.locations['material.ambient'], *material.ambient )
+                    gl.glUniform3f( self.locations['material.diffuse'], *material.diffuse)
+                    gl.glUniform3f( self.locations['material.specular'], *material.specular )
+                    gl.glUniform1f( self.locations['material.shininess'], material.shininess )
+
                     model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset) + glm.vec3(*position))
                     gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
+                    
                     gl.glDrawElements(gl.GL_TRIANGLES, len(self.indices), gl.GL_UNSIGNED_INT, self.indices)
             finally:
                 self.vertex_vbo.unbind()
@@ -205,11 +222,19 @@ class RenderSpheres(Renderer):
 class SpringNetworkRenderer(Renderer):
     def __init__(self, graph):
         spring_layout = nx.spring_layout(graph, dim=3, scale=9)
-        self.nodes = [pos for pos in spring_layout.values()]
+        self.nodes = [pos for node, pos in spring_layout.items()]
         self.edges = [spring_layout[node] for edge in graph.edges() for node in edge]
 
-        self.light_renderer = RenderSpheres([(0, 0, 0)], radius=0.05, subdivisions=2)
-        self.nodes_renderer = RenderSpheres(self.nodes, radius=0.05, subdivisions=2)
+        degrees = [degree for node, degree in graph.degree]
+        max_degree = 1 / max(degrees)
+        colors = [Material(
+                colorsys.hsv_to_rgb(0,0.5,degree * max_degree), 
+                colorsys.hsv_to_rgb(0,0.5,degree * max_degree),
+            (0.5, 0.5, 0.5), 32) for degree in degrees]
+        light_material = Material((1, 1, 1), (1, 1, 1), (1, 1, 1), 1)
+
+        self.light_renderer = RenderSpheres([(0, 0, 0)], [light_material], light_color=light_material, radius=0.05, subdivisions=2)
+        self.nodes_renderer = RenderSpheres(self.nodes, colors, radius=0.05, subdivisions=2)
         self.line_renderer = RenderLine(self.edges)
 
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
