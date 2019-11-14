@@ -7,7 +7,8 @@ from OpenGL.GL import shaders
 import glm
 import numpy as np
 import networkx as nx
-import colorsys
+import math
+import highlighters as hl
 
 # CREDIT from these tutorials
 # https://www.labri.fr/perso/nrougier/python-opengl/#about-this-book
@@ -115,14 +116,16 @@ class Renderer:
 
 # Pass in a flattened list of edges and it will render them all
 class RenderLine(Renderer):
-    def __init__(self, edges):
+    def __init__(self, edges, colors):
+        self.num_points = len(edges)
+        colors = [colors[math.floor(i*0.5)] for i in range(self.num_points)] # Because we need the colors twice for each edge point
         self.shader = self.read_shaders("line.vert", "line.frag")
 
-        uniforms = ['model_mat', 'view_mat', 'proj_mat', 'line_color']
-        attributes = ['vertex_position']
+        uniforms = ['model_mat', 'view_mat', 'proj_mat']
+        attributes = ['vertex_position', 'line_color']
         self.locations = self.get_locations(self.shader, uniforms, attributes)
-        self.vertex_vbo = vbo.VBO(np.array(edges, 'f'))
-        self.num_lines = len(edges)
+        the_vbo = [[*edges, *colors] for edges, colors in zip(edges, colors)]
+        self.vertex_vbo = vbo.VBO(np.array(the_vbo, 'f'))
 
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
         model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset))
@@ -134,31 +137,21 @@ class RenderLine(Renderer):
                 gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
                 gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
                 gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
-                gl.glUniform4f( self.locations['line_color'], 1,1,1,0.2 )
                 gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
-                gl.glVertexAttribPointer(self.locations["vertex_position"], 3, gl.GL_FLOAT,False, 3 * 4, self.vertex_vbo)
-                gl.glDrawArrays(gl.GL_LINES, 0, int(self.num_lines))
+                gl.glEnableVertexAttribArray( self.locations['line_color'] )
+                gl.glVertexAttribPointer(self.locations["vertex_position"], 3, gl.GL_FLOAT,False, 7 * 4, self.vertex_vbo)
+                gl.glVertexAttribPointer(self.locations["line_color"], 4, gl.GL_FLOAT,False, 7 * 4, self.vertex_vbo + 3 * 4)
+                gl.glDrawArrays(gl.GL_LINES, 0, int(self.num_points))
             finally:
                 self.vertex_vbo.unbind()
+                gl.glDisableVertexAttribArray( self.locations["line_color"] )
                 gl.glDisableVertexAttribArray( self.locations["vertex_position"] )
         finally:
             shaders.glUseProgram(0) # Go back to the legacy pipeline
 
-class Material():
-    def __init__(self, ambient, diffuse, specular, shininess):
-        self.ambient = ambient
-        self.diffuse = diffuse
-        self.specular = specular
-        self.shininess = shininess
-
-    def __repr__(self):
-        return "Ambient: ({}, {}, {}), Diffuse: ({}, {}, {}), Specular: ({}, {}, {}), Shininess: {}".format(
-            *self.ambient, *self.diffuse, *self.specular, self.shininess)
-
 # Renders n spheres at given positions
 class RenderSpheres(Renderer):
-    def __init__(self, positions, colors, light_color=Material(glm.vec3(0.2), glm.vec3(0.5), glm.vec3(1.0), 0), 
-    radius = 1, subdivisions = 1):
+    def __init__(self, positions, colors, light_color, radius = 1, subdivisions = 1):
         self.positions = positions
         self.colors = colors
         self.light_color = light_color
@@ -224,18 +217,12 @@ class SpringNetworkRenderer(Renderer):
         spring_layout = nx.spring_layout(graph, dim=3, scale=9)
         self.nodes = [pos for node, pos in spring_layout.items()]
         self.edges = [spring_layout[node] for edge in graph.edges() for node in edge]
+        light_material = hl.Material((1, 1, 1), (1, 1, 1), (1, 1, 1), 1)
+        highlighter = hl.MotifHighlighter(graph)
 
-        degrees = [degree for node, degree in graph.degree]
-        max_degree = 1 / max(degrees)
-        colors = [Material(
-                colorsys.hsv_to_rgb(0,0.5,degree * max_degree), 
-                colorsys.hsv_to_rgb(0,0.5,degree * max_degree),
-            (0.5, 0.5, 0.5), 32) for degree in degrees]
-        light_material = Material((1, 1, 1), (1, 1, 1), (1, 1, 1), 1)
-
-        self.light_renderer = RenderSpheres([(0, 0, 0)], [light_material], light_color=light_material, radius=0.05, subdivisions=2)
-        self.nodes_renderer = RenderSpheres(self.nodes, colors, radius=0.05, subdivisions=2)
-        self.line_renderer = RenderLine(self.edges)
+        self.light_renderer = RenderSpheres([(0, 0, 0)], [light_material], light_material, radius=0.05, subdivisions=2)
+        self.nodes_renderer = RenderSpheres(self.nodes, highlighter.get_node_colors(), highlighter.get_light_color(), radius=0.05, subdivisions=2)
+        self.line_renderer = RenderLine(self.edges, highlighter.get_edge_colors())
 
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
         degree = np.round((tick * 0.1)) % 360;

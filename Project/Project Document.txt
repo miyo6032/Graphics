@@ -1,10 +1,10 @@
 Project Requirements
-    [DONE]Basic 3d spring rendering though a loadable network [EASY]
+    [DONE] Basic 3d spring rendering though a loadable network [EASY]
         Spheres and lines [CYLINDERS ARE UNECESSARY]
 
-    [DONE]Color based on data or based on a given partition [EASY]
+    [DONE] Color based on data or based on a given partition [EASY]
 
-    Highlighting motifs [EASY]
+    [DONE] Highlighting motifs [EASY]
         Find the different motifs and highlight them
         Should be a simple extension of the color
 
@@ -24,7 +24,7 @@ Project Requirements
 
 |||||||||||||||||||||||||||||||||||||||||||||||||| Finish ^ by 11/23
 
-    Showing flow through a directed network much like in PS8 [Moderate]
+    Showing flow through a directed network much like in PS8 [Hard]
 
     Real time moving and floating (depends on networkx efficiency) [Hard]
 

@@ -1,7 +1,7 @@
 #version 330
 
-uniform vec4 line_color;
+in vec4 frag_line_color;
 
 void main() {
-    gl_FragColor = line_color;
+    gl_FragColor = frag_line_color;
 }
