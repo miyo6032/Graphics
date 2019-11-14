@@ -7,7 +7,6 @@ from OpenGL.GL import shaders
 import glm
 import numpy as np
 import networkx as nx
-import math
 import highlighters as hl
 
 # CREDIT from these tutorials
@@ -118,7 +117,6 @@ class Renderer:
 class RenderLine(Renderer):
     def __init__(self, edges, colors):
         self.num_points = len(edges)
-        colors = [colors[math.floor(i*0.5)] for i in range(self.num_points)] # Because we need the colors twice for each edge point
         self.shader = self.read_shaders("line.vert", "line.frag")
 
         uniforms = ['model_mat', 'view_mat', 'proj_mat']
@@ -218,7 +216,7 @@ class SpringNetworkRenderer(Renderer):
         self.nodes = [pos for node, pos in spring_layout.items()]
         self.edges = [spring_layout[node] for edge in graph.edges() for node in edge]
         light_material = hl.Material((1, 1, 1), (1, 1, 1), (1, 1, 1), 1)
-        highlighter = hl.MotifHighlighter(graph)
+        highlighter = hl.PartitionHighlighter(graph)
 
         self.light_renderer = RenderSpheres([(0, 0, 0)], [light_material], light_material, radius=0.05, subdivisions=2)
         self.nodes_renderer = RenderSpheres(self.nodes, highlighter.get_node_colors(), highlighter.get_light_color(), radius=0.05, subdivisions=2)
@@ -322,7 +320,12 @@ class Context:
     def idle(self):
         self.tick = glut.glutGet(glut.GLUT_ELAPSED_TIME);
 
-graph = nx.fast_gnp_random_graph(100, 3 / 100)
-context = Context(graph)
-context.renderers.append(SpringNetworkRenderer(graph))
+# graph = nx.fast_gnp_random_graph(100, 3 / 100)
+
+fname1 = 'data/karate.gml'
+Go     = nx.read_gml('./' + fname1, label='id')
+G      = nx.convert_node_labels_to_integers(Go) # map node names to integers (0:n-1) [because indexing]
+
+context = Context(G)
+context.renderers.append(SpringNetworkRenderer(G))
 glut.glutMainLoop()
