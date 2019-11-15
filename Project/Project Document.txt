@@ -12,7 +12,9 @@ Project Requirements
 
     Transparency of nodes and edges [Moderate]
 
-    Bloom effect [Easy]
+    Bloom effect [LOL REKT]
+
+    glutWarpPointer doesn't seem to work on linux
 
 |||||||||||||||||||||||||||||||||||||||||||||||||| Finish ^ by 11/16 (If we aren't close, we have problems)
 

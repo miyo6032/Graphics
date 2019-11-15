@@ -164,50 +164,44 @@ class RenderSpheres(Renderer):
         self.locations = self.get_locations(self.shader, uniforms, attibutes)
 
         vertices, triangles = Icosphere().make_icosphere(subdivisions)
-        vertex_data = np.array([[f * radius for f in vec] for vec in vertices], 'f')
+        self.vertex_data = np.array([[f * radius for f in vec] for vec in vertices], 'f')
         self.indices = np.array([f for vec in triangles for f in vec], 'uint32')
-        self.vertex_vbo = vbo.VBO(vertex_data)
-        self.indices_vbo = vbo.VBO(self.indices)
-        self.stride = len(vertex_data[0])*4 # n items per row, and each row is 4 bytes
+        self.stride = len(self.vertex_data[0])*4 # n items per row, and each row is 4 bytes
 
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
         shaders.glUseProgram(self.shader)
         try:
-            self.vertex_vbo.bind()
-            try:
-                gl.glUniform3f( self.locations['camera_pos'], *camera_pos )
-                gl.glUniform3f( self.locations['light_pos'], *light_pos)
-                gl.glUniform3f( self.locations['light.ambient'], *self.light_color.ambient )
-                gl.glUniform3f( self.locations['light.diffuse'], *self.light_color.diffuse )
-                gl.glUniform3f( self.locations['light.specular'], *self.light_color.specular )
-                gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
-                gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
+            gl.glUniform3f( self.locations['camera_pos'], *camera_pos )
+            gl.glUniform3f( self.locations['light_pos'], *light_pos)
+            gl.glUniform3f( self.locations['light.ambient'], *self.light_color.ambient )
+            gl.glUniform3f( self.locations['light.diffuse'], *self.light_color.diffuse )
+            gl.glUniform3f( self.locations['light.specular'], *self.light_color.specular )
+            gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
+            gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
 
-                gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
-                gl.glEnableVertexAttribArray( self.locations["vertex_normal"] )
-                gl.glVertexAttribPointer(
-                    self.locations["vertex_position"],
-                    3, gl.GL_FLOAT,False, self.stride, self.vertex_vbo
-                )
-                gl.glVertexAttribPointer(
-                    self.locations["vertex_normal"],
-                    3, gl.GL_FLOAT,False, self.stride, self.vertex_vbo
-                )
-                for position, material in zip(self.positions, self.colors):
-                    gl.glUniform3f( self.locations['material.ambient'], *material.ambient )
-                    gl.glUniform3f( self.locations['material.diffuse'], *material.diffuse)
-                    gl.glUniform3f( self.locations['material.specular'], *material.specular )
-                    gl.glUniform1f( self.locations['material.shininess'], material.shininess )
+            gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
+            gl.glEnableVertexAttribArray( self.locations["vertex_normal"] )
+            gl.glVertexAttribPointer(
+                self.locations["vertex_position"],
+                3, gl.GL_FLOAT,False, self.stride, self.vertex_data
+            )
+            gl.glVertexAttribPointer(
+                self.locations["vertex_normal"],
+                3, gl.GL_FLOAT,False, self.stride, self.vertex_data
+            )
+            for position, material in zip(self.positions, self.colors):
+                gl.glUniform3f( self.locations['material.ambient'], *material.ambient )
+                gl.glUniform3f( self.locations['material.diffuse'], *material.diffuse)
+                gl.glUniform3f( self.locations['material.specular'], *material.specular )
+                gl.glUniform1f( self.locations['material.shininess'], material.shininess )
 
-                    model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset) + glm.vec3(*position))
-                    gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
-                    
-                    gl.glDrawElements(gl.GL_TRIANGLES, len(self.indices), gl.GL_UNSIGNED_INT, self.indices)
-            finally:
-                self.vertex_vbo.unbind()
-                gl.glDisableVertexAttribArray( self.locations["vertex_position"] )
-                gl.glDisableVertexAttribArray( self.locations["vertex_normal"] )
+                model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset) + glm.vec3(*position))
+                gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
+                
+                gl.glDrawElements(gl.GL_TRIANGLES, len(self.indices), gl.GL_UNSIGNED_INT, self.indices)
         finally:
+            gl.glDisableVertexAttribArray( self.locations["vertex_position"] )
+            gl.glDisableVertexAttribArray( self.locations["vertex_normal"] )
             shaders.glUseProgram(0) # Go back to the legacy pipeline
 
 # In charge of rendering a spring representation of the network
@@ -223,9 +217,55 @@ class SpringNetworkRenderer(Renderer):
         self.nodes_renderer = RenderSpheres(self.nodes, highlighter.get_node_colors(), highlighter.get_light_color(), radius=0.05, subdivisions=2)
         self.line_renderer = RenderLine(self.edges, highlighter.get_edge_colors())
 
+        self.screen_shaders = self.read_shaders("screen.vert", "screen.frag")
+
+        self.quad_vbo = vbo.VBO(np.array([
+        [-1,  1,  0, 1],
+        [-1, -1,  0, 0],
+        [1, -1,  1, 0],
+
+        [-1,  1,  0, 1],
+        [ 1, -1,  1, 0],
+        [ 1,  1,  1, 1]
+        ], 'f'))
+
+        # Setup VAO for screen quad
+
+        uniforms = ['texture']
+        attributes = ['quad_pos', 'tex_coord']
+        self.locations = self.get_locations(self.screen_shaders, uniforms, attributes)
+
+        # Setup frame buffer business for post processing
+        self.frame_buffer = gl.glGenFramebuffers(1)
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.frame_buffer)
+
+        self.texture = gl.glGenTextures(1)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture)
+        gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB, 1024, 1024, 0, gl.GL_RGB, gl.GL_UNSIGNED_BYTE, None);
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR);
+        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR);
+        gl.glFramebufferTexture2D(gl.GL_FRAMEBUFFER, gl.GL_COLOR_ATTACHMENT0, gl.GL_TEXTURE_2D, self.texture, 0);  
+
+        rbo = gl.glGenRenderbuffers(1);
+        gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, rbo); 
+        gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_DEPTH24_STENCIL8, 1024, 1024);  
+        gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, 0);
+        gl.glFramebufferRenderbuffer(gl.GL_FRAMEBUFFER, gl.GL_DEPTH_STENCIL_ATTACHMENT, gl.GL_RENDERBUFFER, rbo);
+
+        if gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER) == gl.GL_FRAMEBUFFER_COMPLETE:
+            print("Victory??!!")
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+        # gl.glDeleteFramebuffers(1, [frame_buffer])
+
     def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
         degree = np.round((tick * 0.1)) % 360;
         light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
+
+        # First pass
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.frame_buffer)
+        gl.glEnable(gl.GL_DEPTH_TEST)
+        gl.glClearColor(0.1, 0.1, 0.1, 1.0);
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT);
 
         self.nodes_renderer.render(tick, (0, 0, 0), camera_pos, light_pos, view_mat, proj_mat)
 
@@ -235,6 +275,25 @@ class SpringNetworkRenderer(Renderer):
         gl.glDisable(gl.GL_BLEND);
 
         self.light_renderer.render(tick, light_pos, camera_pos, light_pos, view_mat, proj_mat)
+
+        # Second pass
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+        gl.glDisable(gl.GL_DEPTH_TEST);
+        gl.glClearColor(1.0, 1.0, 1.0, 1.0);
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT);
+
+        shaders.glUseProgram(self.screen_shaders)
+        self.quad_vbo.bind()
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture)
+        gl.glEnableVertexAttribArray( self.locations["quad_pos"] )
+        gl.glEnableVertexAttribArray( self.locations["tex_coord"] )
+        stride = 4*4 # 4 items per row
+        gl.glVertexAttribPointer(self.locations["quad_pos"],2, gl.GL_FLOAT,False, stride, self.quad_vbo)
+        gl.glVertexAttribPointer(self.locations["tex_coord"],2, gl.GL_FLOAT,False, stride, self.quad_vbo + (2 * 4))
+        gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
+        self.quad_vbo.unbind()
+        gl.glDisableVertexAttribArray( self.locations["quad_pos"] )
+        gl.glDisableVertexAttribArray( self.locations["tex_coord"] )
 
 class Context:
     def __init__(self, graph):
@@ -361,9 +420,6 @@ class Context:
         self.project()
 
     def display(self):
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        gl.glEnable(gl.GL_DEPTH_TEST)
-
         for renderer in self.renderers:
             renderer.render(self.tick, (0, 0, 0), self.camera_pos, None, self.view_mat, self.proj_mat)
 
