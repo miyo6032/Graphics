@@ -8,7 +8,7 @@ Project Requirements
         Find the different motifs and highlight them
         Should be a simple extension of the color
 
-    Implementing actual partition algorithm [EASY]
+    [DONE] Implementing actual partition algorithm [EASY]
 
     Transparency of nodes and edges [Moderate]
 

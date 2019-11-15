@@ -15,6 +15,7 @@ import highlighters as hl
 # https://paroj.github.io/gltut/index.html
 # https://schneide.blog/2016/07/15/generating-an-icosphere-in-c/
 # https://learnopengl.com/Getting-started/OpenGL
+# https://en.wikibooks.org/wiki/OpenGL_Programming/Glescraft_4
 
 class Icosphere():
     def icosahedron(self):
@@ -239,23 +240,37 @@ class Context:
     def __init__(self, graph):
         self.graph = graph
         self.renderers = []
-        self.tick = 0
+        self.tick = 0 # World ticks in milleseconds
         self.aspect = 1
         self.angle = 0
         self.elevation = 0
         self.fov = 55 # Field of view
         self.dim = 5 # Size of world
+        self.view_mode = 1 # 0 for overhead and 1 for first person
+        self.camera_pos = glm.vec3(0, 0, 3)
+        self.camera_front = glm.vec3(0, 0, -1)
+        self.camera_up = glm.vec3(0, 1, 0)
+        self.prev_frame_time = 0
+        self.delta_time = 0
         self.init_glut()
         self.setup_camera()
+        self.warp = False; # To keep the motion function from being called after we warp the mouse pointer
 
     def setup_camera(self):
-        Ex = -2*self.dim*self.approxSin(self.angle)*self.approxCos(self.elevation);
-        Ey = +2*self.dim*self.approxSin(self.elevation);
-        Ez = +2*self.dim*self.approxCos(self.angle)*self.approxCos(self.elevation);
-        self.camera_pos = glm.vec3(Ex, Ey, Ez)
-        camera_target = glm.vec3(0)
+        if self.view_mode == 0:
+            Ex = -2*self.dim*self.approxSin(self.angle)*self.approxCos(self.elevation);
+            Ey = +2*self.dim*self.approxSin(self.elevation);
+            Ez = +2*self.dim*self.approxCos(self.angle)*self.approxCos(self.elevation);
+            self.camera_pos = glm.vec3(Ex, Ey, Ez)
+            camera_target = glm.vec3(0)
 
-        self.view_mat = glm.lookAt(self.camera_pos, camera_target, glm.vec3(0, self.approxCos(self.elevation), 0))
+            self.view_mat = glm.lookAt(self.camera_pos, camera_target, glm.vec3(0, self.approxCos(self.elevation), 0))
+        elif self.view_mode == 1:
+            self.camera_front.x = np.cos(glm.radians(self.angle)) * np.cos(glm.radians(self.elevation))
+            self.camera_front.y = np.sin(glm.radians(self.elevation))
+            self.camera_front.z = np.sin(glm.radians(self.angle)) * np.cos(glm.radians(self.elevation))
+            self.camera_front = glm.normalize(self.camera_front)
+            self.view_mat = glm.lookAt(self.camera_pos, self.camera_pos + self.camera_front, self.camera_up)
 
     def approxCos(self, angle):
         return np.cos(3.1415926/180*angle)
@@ -267,29 +282,81 @@ class Context:
         glut.glutInit() # Creates the opengl context
         glut.glutInitDisplayMode(glut.GLUT_DOUBLE | glut.GLUT_RGBA | glut.GLUT_DEPTH)
         glut.glutCreateWindow('3D Network Visualizer')
-        glut.glutReshapeWindow(512, 512)
+        glut.glutReshapeWindow(1024, 1024)
         glut.glutReshapeFunc(self.reshape)
         glut.glutDisplayFunc(self.display)
         glut.glutKeyboardFunc(self.keyboard)
         glut.glutSpecialFunc(self.special)
         glut.glutIdleFunc(self.idle)
+        glut.glutMotionFunc(self.mouse_motion)
+        glut.glutPassiveMotionFunc(self.mouse_motion)
+        glut.glutMouseFunc(self.mouse)
+        if self.view_mode == 1:
+            glut.glutSetCursor(glut.GLUT_CURSOR_NONE)
+
+    def mouse(self, button, state, x, y):
+        if self.view_mode != 1 or state == glut.GLUT_UP:
+            return
+
+        if button == 3:
+            self.fov = np.clip(self.fov + 1, 30, 90)
+        elif button == 4:
+            self.fov = np.clip(self.fov - 1, 30, 90)
+
+        self.project()
+
+    def mouse_motion(self, x, y):
+        if self.view_mode != 1:
+            return
+
+        if not self.warp:
+            x_center = glut.glutGet(glut.GLUT_WINDOW_WIDTH) / 2
+            y_center = glut.glutGet(glut.GLUT_WINDOW_HEIGHT) / 2
+
+            dx = x - x_center
+            dy = y - y_center
+
+            sensitivity = 0.05
+            dx *= sensitivity
+            dy *= sensitivity
+
+            self.angle = self.angle + dx
+            self.elevation = min(max(self.elevation - dy, -89.9), 89.9)
+
+            self.warp = True
+            glut.glutWarpPointer(int(x_center), int(y_center))
+        else:
+            self.warp = False
+
+        self.project()
 
     def project(self):
-        self.proj_mat = glm.perspective(glm.radians(self.fov), self.aspect, self.dim/4, 4*self.dim);
+        self.proj_mat = glm.perspective(glm.radians(self.fov), self.aspect, self.dim/16, 4*self.dim);
         self.setup_camera()
 
     def special(self, key, x, y):
-        if key == glut.GLUT_KEY_RIGHT:
-            self.angle += 5
-        if key == glut.GLUT_KEY_LEFT:
-            self.angle -= 5
-        if key == glut.GLUT_KEY_UP:
-            self.elevation += 5
-        if key == glut.GLUT_KEY_DOWN:
-            self.elevation -= 5
+        if self.view_mode == 0:
+            if key == glut.GLUT_KEY_RIGHT:
+                self.angle += 5
+            if key == glut.GLUT_KEY_LEFT:
+                self.angle -= 5
+            if key == glut.GLUT_KEY_UP:
+                self.elevation += 5
+            if key == glut.GLUT_KEY_DOWN:
+                self.elevation -= 5
+            self.elevation %= 360
+            self.angle %= 360
 
-        self.elevation %= 360
-        self.angle %= 360
+        elif self.view_mode == 1:
+            camera_speed = 25 * 0.001 * self.delta_time
+            if key == glut.GLUT_KEY_UP:
+                self.camera_pos += camera_speed * self.camera_front
+            if key == glut.GLUT_KEY_DOWN:
+                self.camera_pos -= camera_speed * self.camera_front
+            if key == glut.GLUT_KEY_RIGHT:
+                self.camera_pos += glm.normalize(glm.cross(self.camera_front, self.camera_up)) * camera_speed
+            if key == glut.GLUT_KEY_LEFT:
+                self.camera_pos -= glm.normalize(glm.cross(self.camera_front, self.camera_up)) * camera_speed
 
         self.project()
 
@@ -319,6 +386,8 @@ class Context:
 
     def idle(self):
         self.tick = glut.glutGet(glut.GLUT_ELAPSED_TIME);
+        self.delta_time = self.tick - self.prev_frame_time
+        self.prev_frame_time = self.tick
 
 # graph = nx.fast_gnp_random_graph(100, 3 / 100)
 
