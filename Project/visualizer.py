@@ -92,7 +92,7 @@ class Renderer:
             return shader
         except(gl.GLError, RuntimeError) as err:
             print("Shader Compilation Error:")
-            print(err)
+            print(str(err).replace('\\n', '\n'))
             exit()
 
     def get_locations(self, shader, uniforms, attributes):
@@ -222,7 +222,7 @@ class SpringNetworkRenderer(Renderer):
         self.blur_shaders = self.read_shaders("screen.vert", "gaussian_blur.frag")
 
         # Setup VAO for screen quad and blur filter
-        blur_uniforms = ['texture', 'horizontal']
+        blur_uniforms = ['image', 'horizontal']
         hdr_uniforms = ['scene', 'bloomBlur', 'exposure']
         attributes = ['quad_pos', 'tex_coord']
         self.hdr_locations = self.get_locations(self.screen_shaders, hdr_uniforms, attributes)
@@ -233,7 +233,7 @@ class SpringNetworkRenderer(Renderer):
         gl.glUniform1i(self.hdr_locations["bloomBlur"], 1)
 
         shaders.glUseProgram(self.blur_shaders)
-        gl.glUniform1i(self.blur_locations["texture"], 0)
+        gl.glUniform1i(self.blur_locations["image"], 0)
 
         # The vbo for two triangles to make a quad
         self.quad_vbo = vbo.VBO(np.array([
