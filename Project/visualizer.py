@@ -206,7 +206,8 @@ class RenderSpheres(Renderer):
 
 # In charge of rendering a spring representation of the network
 class SpringNetworkRenderer(Renderer):
-    def __init__(self, graph):
+    def __init__(self, graph, aspect):
+        self.aspect = aspect
         spring_layout = nx.spring_layout(graph, dim=3, scale=9)
         self.nodes = [pos for node, pos in spring_layout.items()]
         self.edges = [spring_layout[node] for edge in graph.edges() for node in edge]
@@ -257,7 +258,7 @@ class SpringNetworkRenderer(Renderer):
         # is the blur output for bright lighting
         for i in range(2):
             gl.glBindTexture(gl.GL_TEXTURE_2D, self.color_buffers[i])
-            gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB16F, 1024, 1024, 0, gl.GL_RGB, gl.GL_FLOAT, None)
+            gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB16F, *aspect, 0, gl.GL_RGB, gl.GL_FLOAT, None)
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
@@ -270,7 +271,7 @@ class SpringNetworkRenderer(Renderer):
         # Without this depth buffer, the depth test fails
         rbo = gl.glGenRenderbuffers(1);
         gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, rbo); 
-        gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_DEPTH24_STENCIL8, 1024, 1024);
+        gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_DEPTH24_STENCIL8, *aspect);
         gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, 0);
         gl.glFramebufferRenderbuffer(gl.GL_FRAMEBUFFER, gl.GL_DEPTH_STENCIL_ATTACHMENT, gl.GL_RENDERBUFFER, rbo);
 
@@ -279,11 +280,13 @@ class SpringNetworkRenderer(Renderer):
         self.blur_frame_buffers = gl.glGenFramebuffers(2);
         self.blur_tex_buffers = gl.glGenTextures(2);
 
+        gl.glEnable(gl.GL_DEPTH_TEST)
+
         # Create two framebuffers to create the blur effect that will bounce back and forth
         for i in range(2):
             gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.blur_frame_buffers[i])
             gl.glBindTexture(gl.GL_TEXTURE_2D, self.blur_tex_buffers[i])
-            gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB16F, 1024, 1024, 0, gl.GL_RGB, gl.GL_FLOAT, None)
+            gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB16F, *aspect, 0, gl.GL_RGB, gl.GL_FLOAT, None)
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
@@ -302,10 +305,12 @@ class SpringNetworkRenderer(Renderer):
         light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
 
         # First pass (the normal render)
-        
+
+        # Resise viewport to match the framebuffer size
+        gl.glViewport(0, 0, *self.aspect)
+
         # Bind the hdr framebuffer (which is the one that contains two color buffers)
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.frame_buffer)
-        gl.glEnable(gl.GL_DEPTH_TEST)
         gl.glClearColor(0, 0, 0, 1.0);
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT);
 
@@ -331,6 +336,9 @@ class SpringNetworkRenderer(Renderer):
             gl.glUniform1ui( self.blur_locations['horizontal'], i % 2 )
             gl.glBindTexture(gl.GL_TEXTURE_2D, self.color_buffers[1] if i == 0 else self.blur_tex_buffers[(i + 1) % 2])
             self.renderScreenQuad(self.blur_locations)
+
+        # Back to normal viewport
+        gl.glViewport(0, 0, glut.glutGet(glut.GLUT_WINDOW_WIDTH), glut.glutGet(glut.GLUT_WINDOW_HEIGHT) )
 
         # Third HDR tonemapping pass
 
@@ -363,13 +371,12 @@ class SpringNetworkRenderer(Renderer):
 class Context:
     def __init__(self, graph):
         self.graph = graph
-        self.renderers = []
         self.tick = 0 # World ticks in milleseconds
-        self.aspect = 1
         self.angle = 0
         self.elevation = 0
         self.fov = 55 # Field of view
-        self.dim = 5 # Size of world
+        self.resolution = (1280, 720)
+        self.aspect = self.resolution[0] / self.resolution[1]
         self.view_mode = 1 # 0 for overhead and 1 for first person
         self.camera_pos = glm.vec3(0, 0, 3)
         self.camera_front = glm.vec3(0, 0, -1)
@@ -377,24 +384,27 @@ class Context:
         self.prev_frame_time = 0
         self.delta_time = 0
         self.init_glut()
-        self.setup_camera()
+        self.setup_view_proj()
         self.warp = False; # To keep the motion function from being called after we warp the mouse pointer
+        self.renderers = [SpringNetworkRenderer(G, self.resolution)]
 
-    def setup_camera(self):
+    def setup_view_proj(self):
         if self.view_mode == 0:
             Ex = -2*self.dim*self.approxSin(self.angle)*self.approxCos(self.elevation);
             Ey = +2*self.dim*self.approxSin(self.elevation);
             Ez = +2*self.dim*self.approxCos(self.angle)*self.approxCos(self.elevation);
             self.camera_pos = glm.vec3(Ex, Ey, Ez)
             camera_target = glm.vec3(0)
-
             self.view_mat = glm.lookAt(self.camera_pos, camera_target, glm.vec3(0, self.approxCos(self.elevation), 0))
+
         elif self.view_mode == 1:
             self.camera_front.x = np.cos(glm.radians(self.angle)) * np.cos(glm.radians(self.elevation))
             self.camera_front.y = np.sin(glm.radians(self.elevation))
             self.camera_front.z = np.sin(glm.radians(self.angle)) * np.cos(glm.radians(self.elevation))
             self.camera_front = glm.normalize(self.camera_front)
             self.view_mat = glm.lookAt(self.camera_pos, self.camera_pos + self.camera_front, self.camera_up)
+
+        self.proj_mat = glm.perspective(glm.radians(self.fov), self.aspect, 0.25, 64);
 
     def approxCos(self, angle):
         return np.cos(3.1415926/180*angle)
@@ -406,7 +416,7 @@ class Context:
         glut.glutInit() # Creates the opengl context
         glut.glutInitDisplayMode(glut.GLUT_DOUBLE | glut.GLUT_RGBA | glut.GLUT_DEPTH)
         glut.glutCreateWindow('3D Network Visualizer')
-        glut.glutReshapeWindow(1024, 1024)
+        glut.glutReshapeWindow(*self.resolution)
         glut.glutReshapeFunc(self.reshape)
         glut.glutDisplayFunc(self.display)
         glut.glutKeyboardFunc(self.keyboard)
@@ -419,7 +429,7 @@ class Context:
             glut.glutSetCursor(glut.GLUT_CURSOR_NONE)
 
     def mouse(self, button, state, x, y):
-        if self.view_mode != 1 or state == glut.GLUT_UP:
+        if state == glut.GLUT_UP:
             return
 
         if button == 3:
@@ -427,7 +437,7 @@ class Context:
         elif button == 4:
             self.fov = np.clip(self.fov - 1, 30, 90)
 
-        self.project()
+        self.setup_view_proj()
 
     def mouse_motion(self, x, y):
         if self.view_mode != 1:
@@ -452,11 +462,7 @@ class Context:
         else:
             self.warp = False
 
-        self.project()
-
-    def project(self):
-        self.proj_mat = glm.perspective(glm.radians(self.fov), self.aspect, self.dim/16, 4*self.dim);
-        self.setup_camera()
+        self.setup_view_proj()
 
     def special(self, key, x, y):
         if self.view_mode == 0:
@@ -482,7 +488,7 @@ class Context:
             if key == glut.GLUT_KEY_LEFT:
                 self.camera_pos -= glm.normalize(glm.cross(self.camera_front, self.camera_up)) * camera_speed
 
-        self.project()
+        self.setup_view_proj()
 
     def display(self):
         for renderer in self.renderers:
@@ -496,10 +502,9 @@ class Context:
         glut.glutSwapBuffers()
         glut.glutPostRedisplay()
 
-    def reshape(self, width,height):
-        gl.glViewport(0, 0, width, height)
+    def reshape(self, width, height):
         self.aspect = width / height if height > 0 else 1
-        self.project()
+        self.setup_view_proj()
 
     def keyboard(self, key, x, y):
         if key == b'\x1b':
@@ -517,5 +522,4 @@ Go     = nx.read_gml('./' + fname1, label='id')
 G      = nx.convert_node_labels_to_integers(Go) # map node names to integers (0:n-1) [because indexing]
 
 context = Context(G)
-context.renderers.append(SpringNetworkRenderer(G))
 glut.glutMainLoop()
