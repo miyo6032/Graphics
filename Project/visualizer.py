@@ -210,15 +210,31 @@ class SpringNetworkRenderer(Renderer):
         spring_layout = nx.spring_layout(graph, dim=3, scale=9)
         self.nodes = [pos for node, pos in spring_layout.items()]
         self.edges = [spring_layout[node] for edge in graph.edges() for node in edge]
-        light_material = hl.Material((1, 1, 1), (1, 1, 1), (1, 1, 1), 1)
-        highlighter = hl.PartitionHighlighter(graph)
+        light_material = hl.Material((2, 2, 2), (1, 1, 1), (1, 1, 1), 1)
+        highlighter = hl.DegreeHighlighter(graph)
 
         self.light_renderer = RenderSpheres([(0, 0, 0)], [light_material], light_material, radius=0.05, subdivisions=2)
         self.nodes_renderer = RenderSpheres(self.nodes, highlighter.get_node_colors(), highlighter.get_light_color(), radius=0.05, subdivisions=2)
         self.line_renderer = RenderLine(self.edges, highlighter.get_edge_colors())
 
         self.screen_shaders = self.read_shaders("screen.vert", "screen.frag")
+        self.blur_shaders = self.read_shaders("screen.vert", "gaussian_blur.frag")
 
+        # Setup VAO for screen quad and blur filter
+        blur_uniforms = ['texture', 'horizontal']
+        hdr_uniforms = ['scene', 'bloomBlur', 'exposure']
+        attributes = ['quad_pos', 'tex_coord']
+        self.hdr_locations = self.get_locations(self.screen_shaders, hdr_uniforms, attributes)
+        self.blur_locations = self.get_locations(self.blur_shaders, blur_uniforms, attributes)
+
+        shaders.glUseProgram(self.screen_shaders)
+        gl.glUniform1i(self.hdr_locations["scene"], 0)
+        gl.glUniform1i(self.hdr_locations["bloomBlur"], 1)
+
+        shaders.glUseProgram(self.blur_shaders)
+        gl.glUniform1i(self.blur_locations["texture"], 0)
+
+        # The vbo for two triangles to make a quad
         self.quad_vbo = vbo.VBO(np.array([
         [-1,  1,  0, 1],
         [-1, -1,  0, 0],
@@ -229,31 +245,55 @@ class SpringNetworkRenderer(Renderer):
         [ 1,  1,  1, 1]
         ], 'f'))
 
-        # Setup VAO for screen quad
-
-        uniforms = ['texture']
-        attributes = ['quad_pos', 'tex_coord']
-        self.locations = self.get_locations(self.screen_shaders, uniforms, attributes)
-
         # Setup frame buffer business for post processing
         self.frame_buffer = gl.glGenFramebuffers(1)
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.frame_buffer)
 
-        self.texture = gl.glGenTextures(1)
-        gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture)
-        gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB, 1024, 1024, 0, gl.GL_RGB, gl.GL_UNSIGNED_BYTE, None);
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR);
-        gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR);
-        gl.glFramebufferTexture2D(gl.GL_FRAMEBUFFER, gl.GL_COLOR_ATTACHMENT0, gl.GL_TEXTURE_2D, self.texture, 0);  
+        self.color_buffers = gl.glGenTextures(2)
 
+        # Attach two framebuffers to do bloom so we don't need more than 1 extra rendering pass
+        # Basically, our fragment shaders will output two color values, and those two color values
+        # get put into the two buffers respectively. The first is the normal output, and the second
+        # is the blur output for bright lighting
+        for i in range(2):
+            gl.glBindTexture(gl.GL_TEXTURE_2D, self.color_buffers[i])
+            gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB16F, 1024, 1024, 0, gl.GL_RGB, gl.GL_FLOAT, None)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+            gl.glFramebufferTexture2D(gl.GL_FRAMEBUFFER, gl.GL_COLOR_ATTACHMENT0 + i, gl.GL_TEXTURE_2D, self.color_buffers[i], 0)
+
+        gl.glDrawBuffers(2, [gl.GL_COLOR_ATTACHMENT0, gl.GL_COLOR_ATTACHMENT1])
+
+        # This is our custom depth buffer since we are replacing the default framebuffer
+        # Without this depth buffer, the depth test fails
         rbo = gl.glGenRenderbuffers(1);
         gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, rbo); 
-        gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_DEPTH24_STENCIL8, 1024, 1024);  
+        gl.glRenderbufferStorage(gl.GL_RENDERBUFFER, gl.GL_DEPTH24_STENCIL8, 1024, 1024);
         gl.glBindRenderbuffer(gl.GL_RENDERBUFFER, 0);
         gl.glFramebufferRenderbuffer(gl.GL_FRAMEBUFFER, gl.GL_DEPTH_STENCIL_ATTACHMENT, gl.GL_RENDERBUFFER, rbo);
 
-        if gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER) == gl.GL_FRAMEBUFFER_COMPLETE:
-            print("Victory??!!")
+        # Create ping-pong framebuffers for the gaussian blur so we can
+        # apply it multiple times and control how much we blur
+        self.blur_frame_buffers = gl.glGenFramebuffers(2);
+        self.blur_tex_buffers = gl.glGenTextures(2);
+
+        # Create two framebuffers to create the blur effect that will bounce back and forth
+        for i in range(2):
+            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.blur_frame_buffers[i])
+            gl.glBindTexture(gl.GL_TEXTURE_2D, self.blur_tex_buffers[i])
+            gl.glTexImage2D(gl.GL_TEXTURE_2D, 0, gl.GL_RGB16F, 1024, 1024, 0, gl.GL_RGB, gl.GL_FLOAT, None)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MIN_FILTER, gl.GL_LINEAR)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_MAG_FILTER, gl.GL_LINEAR)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_S, gl.GL_CLAMP_TO_EDGE)
+            gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
+            gl.glFramebufferTexture2D(gl.GL_FRAMEBUFFER, gl.GL_COLOR_ATTACHMENT0, gl.GL_TEXTURE_2D, self.blur_tex_buffers[i], 0)
+
+        if gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER) != gl.GL_FRAMEBUFFER_COMPLETE:
+            print("Error: frame buffers have not been completed")
+            exit(0)
+
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
         # gl.glDeleteFramebuffers(1, [frame_buffer])
 
@@ -261,10 +301,12 @@ class SpringNetworkRenderer(Renderer):
         degree = np.round((tick * 0.1)) % 360;
         light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
 
-        # First pass
+        # First pass (the normal render)
+        
+        # Bind the hdr framebuffer (which is the one that contains two color buffers)
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.frame_buffer)
         gl.glEnable(gl.GL_DEPTH_TEST)
-        gl.glClearColor(0.1, 0.1, 0.1, 1.0);
+        gl.glClearColor(0, 0, 0, 1.0);
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT);
 
         self.nodes_renderer.render(tick, (0, 0, 0), camera_pos, light_pos, view_mat, proj_mat)
@@ -276,24 +318,47 @@ class SpringNetworkRenderer(Renderer):
 
         self.light_renderer.render(tick, light_pos, camera_pos, light_pos, view_mat, proj_mat)
 
-        # Second pass
-        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
-        gl.glDisable(gl.GL_DEPTH_TEST);
-        gl.glClearColor(1.0, 1.0, 1.0, 1.0);
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT);
+        # Second gaussian "ping pong" blur pass
 
+        # Make sure we use the first texture (because we are using more than one texture)
+        gl.glActiveTexture(gl.GL_TEXTURE0);
+        shaders.glUseProgram(self.blur_shaders)
+
+        # Blur back and forth between the two blur frame buffers
+        blur_iterations = 10
+        for i in range(blur_iterations):
+            gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.blur_frame_buffers[i % 2]); 
+            gl.glUniform1ui( self.blur_locations['horizontal'], i % 2 )
+            gl.glBindTexture(gl.GL_TEXTURE_2D, self.color_buffers[1] if i == 0 else self.blur_tex_buffers[(i + 1) % 2])
+            self.renderScreenQuad(self.blur_locations)
+
+        # Third HDR tonemapping pass
+
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+        gl.glClearColor(1.0, 1.0, 1.0, 1.0);
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT);
         shaders.glUseProgram(self.screen_shaders)
+        gl.glUniform1f(self.hdr_locations["exposure"], 1)
+
+        # Combine the normal buffer and the blurred buffer into one output
+        gl.glActiveTexture(gl.GL_TEXTURE0)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.color_buffers[0])
+        gl.glActiveTexture(gl.GL_TEXTURE1)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.blur_tex_buffers[0])
+        self.renderScreenQuad(self.hdr_locations)
+
+    # Helper function to render a screen quad across the viewport
+    def renderScreenQuad(self, locations):
         self.quad_vbo.bind()
-        gl.glBindTexture(gl.GL_TEXTURE_2D, self.texture)
-        gl.glEnableVertexAttribArray( self.locations["quad_pos"] )
-        gl.glEnableVertexAttribArray( self.locations["tex_coord"] )
+        gl.glEnableVertexAttribArray( locations["quad_pos"] )
+        gl.glEnableVertexAttribArray( locations["tex_coord"] )
         stride = 4*4 # 4 items per row
-        gl.glVertexAttribPointer(self.locations["quad_pos"],2, gl.GL_FLOAT,False, stride, self.quad_vbo)
-        gl.glVertexAttribPointer(self.locations["tex_coord"],2, gl.GL_FLOAT,False, stride, self.quad_vbo + (2 * 4))
+        gl.glVertexAttribPointer(locations["quad_pos"],2, gl.GL_FLOAT,False, stride, self.quad_vbo)
+        gl.glVertexAttribPointer(locations["tex_coord"],2, gl.GL_FLOAT,False, stride, self.quad_vbo + (2 * 4))
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, 6)
         self.quad_vbo.unbind()
-        gl.glDisableVertexAttribArray( self.locations["quad_pos"] )
-        gl.glDisableVertexAttribArray( self.locations["tex_coord"] )
+        gl.glDisableVertexAttribArray( locations["quad_pos"] )
+        gl.glDisableVertexAttribArray( locations["tex_coord"] )
 
 class Context:
     def __init__(self, graph):

@@ -38,7 +38,7 @@ class DegreeHighlighter(Highlighter):
                 colorsys.hsv_to_rgb(0, 0.5, degree * max_degree),
             (0.5, 0.5, 0.5), 32) for degree in degrees]
 
-        self.edge_colors = [(1, 1, 1, 0.5) for edge in graph.edges for node in edge]
+        self.edge_colors = [(2, 1, 2, 0.5) for edge in graph.edges for node in edge]
  
     def get_edge_colors(self):
         return self.edge_colors
