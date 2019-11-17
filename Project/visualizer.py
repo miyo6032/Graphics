@@ -376,8 +376,9 @@ class Context:
         self.elevation = 0
         self.fov = 55 # Field of view
         self.resolution = (1280, 720)
+        self.overhead_view_distance = 5;
         self.aspect = self.resolution[0] / self.resolution[1]
-        self.view_mode = 1 # 0 for overhead and 1 for first person
+        self.view_mode = 0 # 0 for overhead and 1 for first person
         self.camera_pos = glm.vec3(0, 0, 3)
         self.camera_front = glm.vec3(0, 0, -1)
         self.camera_up = glm.vec3(0, 1, 0)
@@ -390,9 +391,9 @@ class Context:
 
     def setup_view_proj(self):
         if self.view_mode == 0:
-            Ex = -2*self.dim*self.approxSin(self.angle)*self.approxCos(self.elevation);
-            Ey = +2*self.dim*self.approxSin(self.elevation);
-            Ez = +2*self.dim*self.approxCos(self.angle)*self.approxCos(self.elevation);
+            Ex = -2*self.overhead_view_distance*self.approxSin(self.angle)*self.approxCos(self.elevation);
+            Ey = +2*self.overhead_view_distance*self.approxSin(self.elevation);
+            Ez = +2*self.overhead_view_distance*self.approxCos(self.angle)*self.approxCos(self.elevation);
             self.camera_pos = glm.vec3(Ex, Ey, Ez)
             camera_target = glm.vec3(0)
             self.view_mat = glm.lookAt(self.camera_pos, camera_target, glm.vec3(0, self.approxCos(self.elevation), 0))
