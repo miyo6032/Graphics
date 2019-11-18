@@ -118,7 +118,7 @@ class Renderer:
 class RenderLine(Renderer):
     def __init__(self, edges, colors):
         self.num_points = len(edges)
-        self.shader = self.read_shaders("line.vert", "line.frag")
+        self.shader = self.read_shaders("line.vert", "bloom_line.frag")
 
         uniforms = ['model_mat', 'view_mat', 'proj_mat']
         attributes = ['vertex_position', 'line_color']
@@ -155,7 +155,7 @@ class RenderSpheres(Renderer):
         self.colors = colors
         self.light_color = light_color
 
-        self.shader = self.read_shaders("test.vert", "test.frag")
+        self.shader = self.read_shaders("spheres.vert", "spheres.frag")
         uniforms = [
         'material.ambient', 'material.diffuse', 'material.specular', 'material.shininess',
         'light.ambient', 'light.diffuse', 'light.specular', 'light_pos',
@@ -219,6 +219,7 @@ class SpringNetworkRenderer(Renderer):
         self.light_renderer = RenderSpheres([(0, 0, 0)], [light_material], light_material, radius=self.sphere_radius, subdivisions=2)
         self.nodes_renderer = RenderSpheres(self.nodes, highlighter.get_node_colors(), highlighter.get_light_color(), radius=self.sphere_radius, subdivisions=2)
         self.line_renderer = RenderLine(self.edges, highlighter.get_edge_colors())
+        self.crosshair_renderer = Crosshair()
 
         self.screen_shaders = self.read_shaders("screen.vert", "screen.frag")
         self.blur_shaders = self.read_shaders("screen.vert", "gaussian_blur.frag")
@@ -336,6 +337,10 @@ class SpringNetworkRenderer(Renderer):
 
         self.light_renderer.render(tick, light_pos, light_pos, context)
 
+        gl.glDisable(gl.GL_DEPTH_TEST)
+        self.crosshair_renderer.render(tick, light_pos, light_pos, context)
+        gl.glEnable(gl.GL_DEPTH_TEST)
+
         # Second gaussian "ping pong" blur pass
 
         # Make sure we use the first texture (because we are using more than one texture)
@@ -385,7 +390,7 @@ class SpringNetworkRenderer(Renderer):
     def findFocusedNode(self, context, sphere_radius):
         max_focus_distance = 64
         x_1 = context.camera_pos
-        x_2 = context.camera_front * 64
+        x_2 = (context.camera_front * 64) + context.camera_pos
         denominator = 1 / np.linalg.norm(x_2 - x_1)
         closest_node = None
         closest_distance = np.inf
@@ -403,6 +408,41 @@ class SpringNetworkRenderer(Renderer):
                 clostest_distance = distance_to_camera
 
         return closest_node
+
+# Renders a simple crosshair using two lines in normalized device coordiates
+class Crosshair(Renderer):
+    def __init__(self):
+        self.shader = self.read_shaders("line.vert", "crosshair_line.frag")
+        uniforms = ['model_mat', 'view_mat', 'proj_mat']
+        attributes = ['vertex_position', 'line_color']
+        self.locations = self.get_locations(self.shader, uniforms, attributes)
+
+        edges = [(-0.011, 0, 0), (0.01, 0, 0), (0, -0.015, 0), (0, 0.01, 0)]
+        self.num_points = len(edges)
+        colors = [(0.5, 0.5, 0.5, 1)]*4
+        the_vbo = [[*edges, *colors] for edges, colors in zip(edges, colors)]
+        self.vertex_vbo = vbo.VBO(np.array(the_vbo, 'f'))
+
+    def render(self, tick, offset, light_pos, context):
+        identity_mat = glm.mat4(1)
+        shaders.glUseProgram(self.shader)
+        try:
+            self.vertex_vbo.bind()
+            try:
+                gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(identity_mat))
+                gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(identity_mat))
+                gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(identity_mat))
+                gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
+                gl.glEnableVertexAttribArray( self.locations['line_color'] )
+                gl.glVertexAttribPointer(self.locations["vertex_position"], 3, gl.GL_FLOAT,False, 7 * 4, self.vertex_vbo)
+                gl.glVertexAttribPointer(self.locations["line_color"], 4, gl.GL_FLOAT,False, 7 * 4, self.vertex_vbo + 3 * 4)
+                gl.glDrawArrays(gl.GL_LINES, 0, int(self.num_points))
+            finally:
+                self.vertex_vbo.unbind()
+                gl.glDisableVertexAttribArray( self.locations["line_color"] )
+                gl.glDisableVertexAttribArray( self.locations["vertex_position"] )
+        finally:
+            shaders.glUseProgram(0) # Go back to the legacy pipeline
 
 class Context:
     def __init__(self, graph):
