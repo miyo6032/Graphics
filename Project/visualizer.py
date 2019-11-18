@@ -111,7 +111,7 @@ class Renderer:
 
         return locations
 
-    def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
+    def render(self, tick, offset, light_pos, context):
         pass
 
 # Pass in a flattened list of edges and it will render them all
@@ -126,7 +126,7 @@ class RenderLine(Renderer):
         the_vbo = [[*edges, *colors] for edges, colors in zip(edges, colors)]
         self.vertex_vbo = vbo.VBO(np.array(the_vbo, 'f'))
 
-    def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
+    def render(self, tick, offset, light_pos, context):
         model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset))
 
         shaders.glUseProgram(self.shader)
@@ -134,8 +134,8 @@ class RenderLine(Renderer):
             self.vertex_vbo.bind()
             try:
                 gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
-                gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
-                gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
+                gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(context.view_mat))
+                gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(context.proj_mat))
                 gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
                 gl.glEnableVertexAttribArray( self.locations['line_color'] )
                 gl.glVertexAttribPointer(self.locations["vertex_position"], 3, gl.GL_FLOAT,False, 7 * 4, self.vertex_vbo)
@@ -168,16 +168,16 @@ class RenderSpheres(Renderer):
         self.indices = np.array([f for vec in triangles for f in vec], 'uint32')
         self.stride = len(self.vertex_data[0])*4 # n items per row, and each row is 4 bytes
 
-    def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
+    def render(self, tick, offset, light_pos, context):
         shaders.glUseProgram(self.shader)
         try:
-            gl.glUniform3f( self.locations['camera_pos'], *camera_pos )
+            gl.glUniform3f( self.locations['camera_pos'], *context.camera_pos )
             gl.glUniform3f( self.locations['light_pos'], *light_pos)
             gl.glUniform3f( self.locations['light.ambient'], *self.light_color.ambient )
             gl.glUniform3f( self.locations['light.diffuse'], *self.light_color.diffuse )
             gl.glUniform3f( self.locations['light.specular'], *self.light_color.specular )
-            gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(view_mat))
-            gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(proj_mat))
+            gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(context.view_mat))
+            gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(context.proj_mat))
 
             gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
             gl.glEnableVertexAttribArray( self.locations["vertex_normal"] )
@@ -208,14 +208,16 @@ class RenderSpheres(Renderer):
 class SpringNetworkRenderer(Renderer):
     def __init__(self, graph, aspect):
         self.aspect = aspect
-        spring_layout = nx.spring_layout(graph, dim=3, scale=9)
-        self.nodes = [pos for node, pos in spring_layout.items()]
-        self.edges = [spring_layout[node] for edge in graph.edges() for node in edge]
+        self.sphere_radius = 0.05
+        self.spring_layout = nx.spring_layout(graph, dim=3, scale=9)
+        self.nodes = [pos for node, pos in self.spring_layout.items()]
+        self.edges = [self.spring_layout[node] for edge in graph.edges() for node in edge]
         light_material = hl.Material((2, 2, 2), (1, 1, 1), (1, 1, 1), 1)
         highlighter = hl.DegreeHighlighter(graph)
+        self.focused_node = None
 
-        self.light_renderer = RenderSpheres([(0, 0, 0)], [light_material], light_material, radius=0.05, subdivisions=2)
-        self.nodes_renderer = RenderSpheres(self.nodes, highlighter.get_node_colors(), highlighter.get_light_color(), radius=0.05, subdivisions=2)
+        self.light_renderer = RenderSpheres([(0, 0, 0)], [light_material], light_material, radius=self.sphere_radius, subdivisions=2)
+        self.nodes_renderer = RenderSpheres(self.nodes, highlighter.get_node_colors(), highlighter.get_light_color(), radius=self.sphere_radius, subdivisions=2)
         self.line_renderer = RenderLine(self.edges, highlighter.get_edge_colors())
 
         self.screen_shaders = self.read_shaders("screen.vert", "screen.frag")
@@ -300,9 +302,20 @@ class SpringNetworkRenderer(Renderer):
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
         # gl.glDeleteFramebuffers(1, [frame_buffer])
 
-    def render(self, tick, offset, camera_pos, light_pos, view_mat, proj_mat):
+    def render(self, tick, offset, light_pos, context):
         degree = np.round((tick * 0.1)) % 360;
         light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
+
+        # Reset the previously focused node back to its original color
+        if self.focused_node != None:
+            self.nodes_renderer.colors[self.focused_node] = self.prev_focused_material
+
+        self.focused_node = self.findFocusedNode(context, self.sphere_radius)
+
+        # Make the focused node bright
+        if self.focused_node != None:
+            self.prev_focused_material = self.nodes_renderer.colors[self.focused_node]
+            self.nodes_renderer.colors[self.focused_node] = hl.Material((1, 1, 1), (1, 1, 1), (1, 1, 1), 1)
 
         # First pass (the normal render)
 
@@ -314,14 +327,14 @@ class SpringNetworkRenderer(Renderer):
         gl.glClearColor(0, 0, 0, 1.0);
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT);
 
-        self.nodes_renderer.render(tick, (0, 0, 0), camera_pos, light_pos, view_mat, proj_mat)
+        self.nodes_renderer.render(tick, (0, 0, 0), light_pos, context)
 
         gl.glEnable(gl.GL_BLEND);
         gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA);  
-        self.line_renderer.render(tick, (0, 0, 0), camera_pos, light_pos, view_mat, proj_mat)
+        self.line_renderer.render(tick, (0, 0, 0), light_pos, context)
         gl.glDisable(gl.GL_BLEND);
 
-        self.light_renderer.render(tick, light_pos, camera_pos, light_pos, view_mat, proj_mat)
+        self.light_renderer.render(tick, light_pos, light_pos, context)
 
         # Second gaussian "ping pong" blur pass
 
@@ -368,6 +381,29 @@ class SpringNetworkRenderer(Renderer):
         gl.glDisableVertexAttribArray( locations["quad_pos"] )
         gl.glDisableVertexAttribArray( locations["tex_coord"] )
 
+    # Finds the node closest to the camera that intersects with the front vector, if any
+    def findFocusedNode(self, context, sphere_radius):
+        max_focus_distance = 64
+        x_1 = context.camera_pos
+        x_2 = context.camera_front * 64
+        denominator = 1 / np.linalg.norm(x_2 - x_1)
+        closest_node = None
+        closest_distance = np.inf
+
+        for node, pos in self.spring_layout.items():
+            x_0 = glm.vec3(pos)
+
+            # Minimize and find distance to the line
+            distance = np.linalg.norm(glm.cross(x_0 - x_1, x_0 - x_2)) * denominator
+            distance_to_camera = glm.distance(x_0, x_1)
+
+            # Since it is a sphere, the collision is if the distance to the line within the radius
+            if distance < sphere_radius and distance_to_camera < closest_distance:
+                closest_node = node
+                clostest_distance = distance_to_camera
+
+        return closest_node
+
 class Context:
     def __init__(self, graph):
         self.graph = graph
@@ -378,7 +414,7 @@ class Context:
         self.resolution = (1280, 720)
         self.overhead_view_distance = 5;
         self.aspect = self.resolution[0] / self.resolution[1]
-        self.view_mode = 0 # 0 for overhead and 1 for first person
+        self.view_mode = 1 # 0 for overhead and 1 for first person
         self.camera_pos = glm.vec3(0, 0, 3)
         self.camera_front = glm.vec3(0, 0, -1)
         self.camera_up = glm.vec3(0, 1, 0)
@@ -387,7 +423,7 @@ class Context:
         self.init_glut()
         self.setup_view_proj()
         self.warp = False; # To keep the motion function from being called after we warp the mouse pointer
-        self.renderers = [SpringNetworkRenderer(G, self.resolution)]
+        self.renderers = [SpringNetworkRenderer(graph, self.resolution)]
 
     def setup_view_proj(self):
         if self.view_mode == 0:
@@ -493,7 +529,7 @@ class Context:
 
     def display(self):
         for renderer in self.renderers:
-            renderer.render(self.tick, (0, 0, 0), self.camera_pos, None, self.view_mat, self.proj_mat)
+            renderer.render(self.tick, (0, 0, 0), None, self)
 
         err = gl.glGetError()
         if err != gl.GL_NO_ERROR:
@@ -516,7 +552,7 @@ class Context:
         self.delta_time = self.tick - self.prev_frame_time
         self.prev_frame_time = self.tick
 
-# graph = nx.fast_gnp_random_graph(100, 3 / 100)
+# G = nx.fast_gnp_random_graph(1000, 3 / 1000)
 
 fname1 = 'data/karate.gml'
 Go     = nx.read_gml('./' + fname1, label='id')

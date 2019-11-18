@@ -10,29 +10,29 @@ Project Requirements
 
     [DONE] Implementing actual partition algorithm [EASY]
 
-    Transparency of nodes and edges [Moderate]
+    [DONE] Transparency of nodes and edges [Moderate]
 
     [DONE] Bloom effect [LOL REKT]
 
-    glutWarpPointer doesn't seem to work on linux
-
 |||||||||||||||||||||||||||||||||||||||||||||||||| Finish ^ by 11/16 (If we aren't close, we have problems)
 
-    Selection of nodes [Hard]
-        Edit properies of a node
-        Minimal interface
-        
-    Fog/cloud effect for partitions (I really want to try my hand at this) [Hard]
+    glutWarpPointer doesn't seem to work on linux [???]
+        Seems like it might be vm machine problem
 
-|||||||||||||||||||||||||||||||||||||||||||||||||| Finish ^ by 11/23
+    Selection of nodes [Moderate]
+        View properies of a node with a minimal interface
 
     Showing flow through a directed network much like in PS8 [Hard]
 
+|||||||||||||||||||||||||||||||||||||||||||||||||| Finish ^ by 11/23
+
     Real time moving and floating (depends on networkx efficiency) [Hard]
+
+    Fog/cloud effect for partitions (I really want to try my hand at this) [Hard]
 
 |||||||||||||||||||||||||||||||||||||||||||||||||| Finish by 11/30
 
-    Creating the presentation I guess [Easy]
+    Creating the presentation I guess [Requires a finding examples to analyze] [Easy]
 
     Final project adjustments
 
