@@ -123,14 +123,14 @@ class Renderer:
 
 # Pass in a flattened list of edges and it will render them all
 class RenderLine(Renderer):
-    def __init__(self, edges, colors):
+    def __init__(self, edges, colors, edge_strengths):
         self.num_points = len(edges)
         self.shader = self.read_shaders("network_line.vert", "bloom_line.frag", "striped_line.geom")
 
         uniforms = ['time', 'model_mat', 'view_mat', 'proj_mat']
-        attributes = ['vertex_position', 'line_color']
+        attributes = ['vertex_position', 'line_color', 'edge_strength']
         self.locations = self.get_locations(self.shader, uniforms, attributes)
-        the_vbo = [[*edges, *colors] for edges, colors in zip(edges, colors)]
+        the_vbo = [[*edges, *colors, edge_strength] for edges, colors, edge_strength in zip(edges, colors, edge_strengths)]
         self.vertex_vbo = vbo.VBO(np.array(the_vbo, 'f'))
 
     def render(self, tick, offset, light_pos, context):
@@ -146,11 +146,14 @@ class RenderLine(Renderer):
                 gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(context.proj_mat))
                 gl.glEnableVertexAttribArray( self.locations["vertex_position"] )
                 gl.glEnableVertexAttribArray( self.locations['line_color'] )
-                gl.glVertexAttribPointer(self.locations["vertex_position"], 3, gl.GL_FLOAT,False, 7 * 4, self.vertex_vbo)
-                gl.glVertexAttribPointer(self.locations["line_color"], 4, gl.GL_FLOAT,False, 7 * 4, self.vertex_vbo + 3 * 4)
+                gl.glEnableVertexAttribArray( self.locations['edge_strength'] )
+                gl.glVertexAttribPointer(self.locations["vertex_position"], 3, gl.GL_FLOAT,False, 8 * 4, self.vertex_vbo)
+                gl.glVertexAttribPointer(self.locations["line_color"], 4, gl.GL_FLOAT,False, 8 * 4, self.vertex_vbo + 3 * 4)
+                gl.glVertexAttribPointer(self.locations["edge_strength"], 1, gl.GL_FLOAT,False, 8 * 4, self.vertex_vbo + 7 * 4)
                 gl.glDrawArrays(gl.GL_LINES, 0, int(self.num_points))
             finally:
                 self.vertex_vbo.unbind()
+                gl.glDisableVertexAttribArray( self.locations["edge_strength"] )
                 gl.glDisableVertexAttribArray( self.locations["line_color"] )
                 gl.glDisableVertexAttribArray( self.locations["vertex_position"] )
         finally:
@@ -215,18 +218,23 @@ class RenderSpheres(Renderer):
 # In charge of rendering a spring representation of the network
 class SpringNetworkRenderer(Renderer):
     def __init__(self, graph, aspect):
+        highlighter = hl.DegreeHighlighter(graph)
         self.aspect = aspect
         self.sphere_radius = 0.05
         self.spring_layout = nx.spring_layout(graph, dim=3, scale=9)
         self.nodes = [pos for node, pos in self.spring_layout.items()]
         self.edges = [self.spring_layout[node] for edge in graph.edges() for node in edge]
+        if highlighter.show_directed_flow() and nx.is_directed(graph):
+            self.edge_strengths = [1 if graph.has_edge(edge[1], edge[0]) else 0 for edge in graph.edges() for node in edge]
+        else:
+            self.edge_strengths = [1 for edge in graph.edges() for node in edge]
+
         light_material = hl.Material((2, 2, 2), (1, 1, 1), (1, 1, 1), 1)
-        highlighter = hl.DegreeHighlighter(graph)
         self.focused_node = None
 
         self.light_renderer = RenderSpheres([(0, 0, 0)], [light_material], light_material, radius=self.sphere_radius, subdivisions=2)
         self.nodes_renderer = RenderSpheres(self.nodes, highlighter.get_node_colors(), highlighter.get_light_color(), radius=self.sphere_radius, subdivisions=2)
-        self.line_renderer = RenderLine(self.edges, highlighter.get_edge_colors())
+        self.line_renderer = RenderLine(self.edges, highlighter.get_edge_colors(), self.edge_strengths)
         self.crosshair_renderer = Crosshair()
 
         self.screen_shaders = self.read_shaders("screen.vert", "screen.frag")
@@ -600,11 +608,11 @@ class Context:
         self.delta_time = self.tick - self.prev_frame_time
         self.prev_frame_time = self.tick
 
-# G = nx.fast_gnp_random_graph(1000, 3 / 1000)
+G = nx.fast_gnp_random_graph(100, 3 / 100, directed=True)
 
-fname1 = 'data/karate.gml'
-Go     = nx.read_gml('./' + fname1, label='id')
-G      = nx.convert_node_labels_to_integers(Go) # map node names to integers (0:n-1) [because indexing]
+# fname1 = 'data/karate.gml'
+# Go     = nx.read_gml('./' + fname1, label='id')
+# G      = nx.convert_node_labels_to_integers(Go) # map node names to integers (0:n-1) [because indexing]
 
 context = Context(G)
 glut.glutMainLoop()

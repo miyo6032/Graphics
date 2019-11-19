@@ -28,6 +28,9 @@ class Highlighter():
     def get_light_color(self):
         return Material((0.2, 0.2, 0.2), (0.5, 0.5, 0.5), (1.0, 1.0, 1.0), 0)
 
+    def show_directed_flow(self):
+        return True
+
 # Make the node brighter depending on its degree
 class DegreeHighlighter(Highlighter):
     def __init__(self, graph):

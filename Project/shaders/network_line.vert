@@ -1,7 +1,8 @@
 #version 330
 
-attribute vec3 vertex_position;
-attribute vec4 line_color;
+in vec3 vertex_position;
+in vec4 line_color;
+in float edge_strength; // 0 for if the line is directed, 1 if the line is strongly connected aka connected from both sides or undirected
 
 uniform mat4 model_mat;
 
@@ -9,9 +10,11 @@ uniform mat4 model_mat;
 // I dunno why besides good practice and good organization
 out VERTEX_OUT {
     vec4 color;
+    float line_strength;
 } vs_out;
 
 void main() {
     gl_Position = model_mat * vec4(vertex_position, 1.0);
     vs_out.color = line_color;
+    vs_out.line_strength = edge_strength;
 }
