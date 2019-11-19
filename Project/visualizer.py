@@ -78,17 +78,24 @@ class Renderer:
         return np.sin(3.1415926/180*angle)
 
     # Loads the shader from files attempts to compile them, and returns the shader program
-    def read_shaders(self, vertex_file, fragment_file):
+    def read_shaders(self, vertex_file, fragment_file, geometry=None):
         with open("./shaders/" + vertex_file, 'r') as file:
             vertex_code = file.read()
         with open("./shaders/" + fragment_file, 'r') as file:
             fragment_code = file.read()
+        if geometry:
+            with open("./shaders/" + geometry, 'r') as file:
+                geometry_code = file.read()
 
         # Compile the shaders
         try:
             vertex_shader = shaders.compileShader(vertex_code, gl.GL_VERTEX_SHADER)
             fragment_shader = shaders.compileShader(fragment_code, gl.GL_FRAGMENT_SHADER)
-            shader = shaders.compileProgram(vertex_shader,fragment_shader)
+            if geometry:
+                geometry_shader = shaders.compileShader(geometry_code, gl.GL_GEOMETRY_SHADER)
+                shader = shaders.compileProgram(vertex_shader,fragment_shader,geometry_shader)
+            else:
+                shader = shaders.compileProgram(vertex_shader,fragment_shader)
             return shader
         except(gl.GLError, RuntimeError) as err:
             print("Shader Compilation Error:")
@@ -118,9 +125,9 @@ class Renderer:
 class RenderLine(Renderer):
     def __init__(self, edges, colors):
         self.num_points = len(edges)
-        self.shader = self.read_shaders("line.vert", "bloom_line.frag")
+        self.shader = self.read_shaders("network_line.vert", "bloom_line.frag", "striped_line.geom")
 
-        uniforms = ['model_mat', 'view_mat', 'proj_mat']
+        uniforms = ['time', 'model_mat', 'view_mat', 'proj_mat']
         attributes = ['vertex_position', 'line_color']
         self.locations = self.get_locations(self.shader, uniforms, attributes)
         the_vbo = [[*edges, *colors] for edges, colors in zip(edges, colors)]
@@ -133,6 +140,7 @@ class RenderLine(Renderer):
         try:
             self.vertex_vbo.bind()
             try:
+                gl.glUniform1f(self.locations['time'], ((tick % 1000) * 0.001))
                 gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
                 gl.glUniformMatrix4fv( self.locations['view_mat'], 1, gl.GL_FALSE, glm.value_ptr(context.view_mat))
                 gl.glUniformMatrix4fv( self.locations['proj_mat'], 1, gl.GL_FALSE, glm.value_ptr(context.proj_mat))

@@ -62,8 +62,8 @@ class MotifHighlighter(Highlighter):
         for node in triangles:
             self.colors[node].ambient = colorsys.hsv_to_rgb(0.5,0.5,1)
 
-        self.edges = map(lambda edge : (1, 0.5, 0.5, 1) if edge[0] in triangles and edge[1] in triangles else (1, 1, 1, 0.5), graph.edges())
-        self.edges = [self.edges[math.floor(i*0.5)] for i in len(degrees)] # Because we need the colors twice for each edge point
+        self.edges = list(map(lambda edge : (1, 0.5, 0.5, 1) if edge[0] in triangles and edge[1] in triangles else (1, 1, 1, 0.5), graph.edges()))
+        self.edges = [self.edges[math.floor(i*0.5)] for i in range(len(degrees))] # Because we need the colors twice for each edge point
 
     def get_edge_colors(self):
         return list(self.edges)
