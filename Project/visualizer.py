@@ -6,7 +6,6 @@ from OpenGL.arrays import vbo
 from OpenGL.GL import shaders
 import glm
 import numpy as np
-import networkx as nx
 import highlighters as hl
 
 # CREDIT from these tutorials
@@ -117,20 +116,31 @@ class Renderer:
             locations[attribute] = location
 
         return locations
-
+    
+    # Called by glut in the glut display function to render opengl
     def render(self, tick, offset, light_pos, context):
+        pass
+
+    # Called whenever the highlighter parameters change
+    def set_highlighter(self, highlighter):
         pass
 
 # Pass in a flattened list of edges and it will render them all
 class RenderLine(Renderer):
-    def __init__(self, edges, colors, edge_strengths):
-        self.num_points = len(edges)
+    def __init__(self):
         self.shader = self.read_shaders("network_line.vert", "bloom_line.frag", "striped_line.geom")
 
         uniforms = ['time', 'model_mat', 'view_mat', 'proj_mat']
         attributes = ['vertex_position', 'line_color', 'edge_strength']
         self.locations = self.get_locations(self.shader, uniforms, attributes)
-        the_vbo = [[*edges, *colors, edge_strength] for edges, colors, edge_strength in zip(edges, colors, edge_strengths)]
+
+    def set_highlighter(self, highlighter):
+        self.edges = [highlighter.get_layout()[node] for edge in highlighter.get_edges() for node in edge]
+        self.num_points = len(self.edges)
+
+        edge_strengths = highlighter.get_edge_strengths()
+        edge_strengths = [edge_strengths[int(np.floor(i / 2))] for i in range(len(edge_strengths * 2))]
+        the_vbo = [[*edges, *colors, edge_strength] for edges, colors, edge_strength in zip(self.edges, highlighter.get_edge_colors(), edge_strengths)]
         self.vertex_vbo = vbo.VBO(np.array(the_vbo, 'f'))
 
     def render(self, tick, offset, light_pos, context):
@@ -161,11 +171,7 @@ class RenderLine(Renderer):
 
 # Renders n spheres at given positions
 class RenderSpheres(Renderer):
-    def __init__(self, positions, colors, light_color, radius = 1, subdivisions = 1):
-        self.positions = positions
-        self.colors = colors
-        self.light_color = light_color
-
+    def __init__(self, subdivisions = 1):
         self.shader = self.read_shaders("spheres.vert", "spheres.frag")
         uniforms = [
         'material.ambient', 'material.diffuse', 'material.specular', 'material.shininess',
@@ -174,9 +180,16 @@ class RenderSpheres(Renderer):
         attibutes = ['vertex_position', 'vertex_normal']
         self.locations = self.get_locations(self.shader, uniforms, attibutes)
 
-        vertices, triangles = Icosphere().make_icosphere(subdivisions)
-        self.vertex_data = np.array([[f * radius for f in vec] for vec in vertices], 'f')
-        self.indices = np.array([f for vec in triangles for f in vec], 'uint32')
+        self.vertices, self.triangles = Icosphere().make_icosphere(subdivisions)
+
+    def set_highlighter(self, highlighter):
+        self.radius = highlighter.get_node_radius()
+        self.positions = highlighter.get_layout().values()
+        self.colors = highlighter.get_node_colors()
+        self.light_color = highlighter.get_light_color()
+
+        self.vertex_data = np.array([[f * self.radius for f in vec] for vec in self.vertices], 'f')
+        self.indices = np.array([f for vec in self.triangles for f in vec], 'uint32')
         self.stride = len(self.vertex_data[0])*4 # n items per row, and each row is 4 bytes
 
     def render(self, tick, offset, light_pos, context):
@@ -217,25 +230,16 @@ class RenderSpheres(Renderer):
 
 # In charge of rendering a spring representation of the network
 class SpringNetworkRenderer(Renderer):
-    def __init__(self, graph, aspect):
-        highlighter = hl.DegreeHighlighter(graph)
+    def __init__(self, highlighter, aspect):
         self.aspect = aspect
-        self.sphere_radius = 0.05
-        self.spring_layout = nx.spring_layout(graph, dim=3, scale=9)
-        self.nodes = [pos for node, pos in self.spring_layout.items()]
-        self.edges = [self.spring_layout[node] for edge in graph.edges() for node in edge]
-        if highlighter.show_directed_flow() and nx.is_directed(graph):
-            self.edge_strengths = [1 if graph.has_edge(edge[1], edge[0]) else 0 for edge in graph.edges() for node in edge]
-        else:
-            self.edge_strengths = [1 for edge in graph.edges() for node in edge]
 
-        light_material = hl.Material((2, 2, 2), (1, 1, 1), (1, 1, 1), 1)
         self.focused_node = None
 
-        self.light_renderer = RenderSpheres([(0, 0, 0)], [light_material], light_material, radius=self.sphere_radius, subdivisions=2)
-        self.nodes_renderer = RenderSpheres(self.nodes, highlighter.get_node_colors(), highlighter.get_light_color(), radius=self.sphere_radius, subdivisions=2)
-        self.line_renderer = RenderLine(self.edges, highlighter.get_edge_colors(), self.edge_strengths)
+        self.light_renderer = RenderSpheres(subdivisions=2)
+        self.nodes_renderer = RenderSpheres(subdivisions=2)
+        self.line_renderer = RenderLine()
         self.crosshair_renderer = Crosshair()
+        self.set_highlighter(highlighter)
 
         self.screen_shaders = self.read_shaders("screen.vert", "screen.frag")
         self.blur_shaders = self.read_shaders("screen.vert", "gaussian_blur.frag")
@@ -319,6 +323,12 @@ class SpringNetworkRenderer(Renderer):
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
         # gl.glDeleteFramebuffers(1, [frame_buffer])
 
+    def set_highlighter(self, highlighter):
+        self.highlighter = highlighter
+        self.light_renderer.set_highlighter(hl.LightHighlighter())
+        self.nodes_renderer.set_highlighter(highlighter)
+        self.line_renderer.set_highlighter(highlighter)
+
     def render(self, tick, offset, light_pos, context):
         degree = np.round((tick * 0.1)) % 360;
         light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
@@ -327,7 +337,7 @@ class SpringNetworkRenderer(Renderer):
         if self.focused_node != None:
             self.nodes_renderer.colors[self.focused_node] = self.prev_focused_material
 
-        self.focused_node = self.findFocusedNode(context, self.sphere_radius)
+        self.focused_node = self.findFocusedNode(context, self.highlighter.get_node_radius())
 
         # Make the focused node bright
         if self.focused_node != None:
@@ -411,7 +421,7 @@ class SpringNetworkRenderer(Renderer):
         closest_node = None
         closest_distance = np.inf
 
-        for node, pos in self.spring_layout.items():
+        for node, pos in self.highlighter.get_layout().items():
             x_0 = glm.vec3(pos)
 
             # Minimize and find distance to the line
@@ -461,16 +471,16 @@ class Crosshair(Renderer):
             shaders.glUseProgram(0) # Go back to the legacy pipeline
 
 class Context:
-    def __init__(self, graph):
+    def __init__(self, graph, highlighters, view_mode, resolution):
         self.graph = graph
         self.tick = 0 # World ticks in milleseconds
         self.angle = 0
         self.elevation = 0
         self.fov = 55 # Field of view
-        self.resolution = (1280, 720)
+        self.resolution = resolution
         self.overhead_view_distance = 5;
         self.aspect = self.resolution[0] / self.resolution[1]
-        self.view_mode = 1 # 0 for overhead and 1 for first person
+        self.view_mode = view_mode # 0 for overhead and 1 for first person
         self.camera_pos = glm.vec3(0, 0, 3)
         self.camera_front = glm.vec3(0, 0, -1)
         self.camera_up = glm.vec3(0, 1, 0)
@@ -479,7 +489,9 @@ class Context:
         self.init_glut()
         self.setup_view_proj()
         self.warp = False; # To keep the motion function from being called after we warp the mouse pointer
-        self.renderers = [SpringNetworkRenderer(graph, self.resolution)]
+        self.highlighter = 0
+        self.renderer = SpringNetworkRenderer(highlighters[self.highlighter], self.resolution)
+        self.highlighters = highlighters
 
     def setup_view_proj(self):
         if self.view_mode == 0:
@@ -584,8 +596,7 @@ class Context:
         self.setup_view_proj()
 
     def display(self):
-        for renderer in self.renderers:
-            renderer.render(self.tick, (0, 0, 0), None, self)
+        self.renderer.render(self.tick, (0, 0, 0), None, self)
 
         err = gl.glGetError()
         if err != gl.GL_NO_ERROR:
@@ -602,17 +613,24 @@ class Context:
     def keyboard(self, key, x, y):
         if key == b'\x1b':
             sys.exit()
+        elif key == 'n':
+            self.highlighter = (self.highlighter + 1) % len(self.highlighters)
+            self.renderer.set_highlighter(self.highlighters[self.highlighter])
+            glut.glutPostRedisplay()
 
     def idle(self):
         self.tick = glut.glutGet(glut.GLUT_ELAPSED_TIME);
         self.delta_time = self.tick - self.prev_frame_time
         self.prev_frame_time = self.tick
 
-G = nx.fast_gnp_random_graph(100, 3 / 100, directed=True)
+def visualize(network, highlighters=None, view_mode=1, resolution=(1280, 720)):
+    """Generates an opengl window that renders the given network"""
 
-# fname1 = 'data/karate.gml'
-# Go     = nx.read_gml('./' + fname1, label='id')
-# G      = nx.convert_node_labels_to_integers(Go) # map node names to integers (0:n-1) [because indexing]
+    if highlighters == None:
+        highlighters = [hl.Highlighter(network)]
 
-context = Context(G)
-glut.glutMainLoop()
+    elif not highlighters is list:
+        highlighters = [highlighters]
+
+    Context(network, highlighters, view_mode, resolution)
+    glut.glutMainLoop()

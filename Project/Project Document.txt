@@ -23,13 +23,13 @@ Project Requirements
 
     [DONE] Highlighting of nodes [Easy]
 
-    Showing flow through a directed network much like in PS8 [Moderate]
+    [DONE] Showing flow through a directed network much like in PS8 [Moderate]
 
-    Fog/cloud effect for partitions (I really want to try my hand at this) [Hard]
+    Start generating examples of rendering [Easy]
 
 |||||||||||||||||||||||||||||||||||||||||||||||||| Finish ^ by 11/25
 
-    Start generating examples of rendering [Easy]
+    Fog/cloud effect for partitions (I really want to try my hand at this) [Hard]
 
     Place a test pyqt app on top maybe to genrate a UI [Hard]
         ONLY DO THIS IF WE HAVE EXTRA TIME
