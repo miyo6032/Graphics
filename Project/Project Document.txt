@@ -16,11 +16,6 @@ Project Requirements
 
 |||||||||||||||||||||||||||||||||||||||||||||||||| Finish ^ by 11/16 (If we aren't close, we have problems)
 
-    glutWarpPointer doesn't seem to work on linux [???]
-        Seems like it might be vm machine problem
-
-    The Motif Highlighter is broken
-
     [DONE] Highlighting of nodes [Easy]
 
     [DONE] Showing flow through a directed network much like in PS8 [Moderate]

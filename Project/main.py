@@ -59,4 +59,4 @@ G = nx.fast_gnp_random_graph(300, 3 / 300)
 # Go     = nx.read_gml('./' + fname1, label='id')
 # G      = nx.convert_node_labels_to_integers(Go) # map node names to integers (0:n-1) [because indexing]
 
-vs.visualize(G, highlighters=triangle_highlighter(G), view_mode=0)
+vs.visualize(G, highlighters=triangle_highlighter(G), view_mode=1)

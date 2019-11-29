@@ -339,11 +339,6 @@ class SpringNetworkRenderer(Renderer):
 
         self.focused_node = self.findFocusedNode(context, self.highlighter.get_node_radius())
 
-        # Make the focused node bright
-        if self.focused_node != None:
-            self.prev_focused_material = self.nodes_renderer.colors[self.focused_node]
-            self.nodes_renderer.colors[self.focused_node] = hl.Material((1, 1, 1), (1, 1, 1), (1, 1, 1), 1)
-
         # First pass (the normal render)
 
         # Resise viewport to match the framebuffer size
@@ -353,6 +348,15 @@ class SpringNetworkRenderer(Renderer):
         gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.frame_buffer)
         gl.glClearColor(0, 0, 0, 1.0);
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT);
+
+        shaders.glUseProgram(0)
+
+        # Make the focused node bright
+        if self.focused_node != None:
+            self.prev_focused_material = self.nodes_renderer.colors[self.focused_node]
+            self.nodes_renderer.colors[self.focused_node] = hl.Material((1, 1, 1), (1, 1, 1), (1, 1, 1), 1)
+            name = context.graph[self.focused_node]["name"] if hasattr(context.graph[self.focused_node], "name") else "Node: " + str(self.focused_node)
+            self.glutPrint(name)
 
         self.nodes_renderer.render(tick, (0, 0, 0), light_pos, context)
 
@@ -434,6 +438,15 @@ class SpringNetworkRenderer(Renderer):
                 clostest_distance = distance_to_camera
 
         return closest_node
+
+    # Print some text to opengl
+    def glutPrint(self, string):
+        gl.glLoadIdentity()
+        gl.glColor3f(1,1,1)
+        gl.glWindowPos2i(5,5)
+
+        for ch in string:
+            glut.glutBitmapCharacter(glut.GLUT_BITMAP_HELVETICA_18, ord(ch))
 
 # Renders a simple crosshair using two lines in normalized device coordiates
 class Crosshair(Renderer):
