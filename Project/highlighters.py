@@ -62,7 +62,7 @@ class LightHighlighter(Highlighter):
     def __init__(self):
         graph = nx.fast_gnp_random_graph(1, 0)
         super().__init__(graph)
-        self.light_material = Material((1.1, 1.1, 0.5), (1, 1, 1), (1, 1, 1), 1)
+        self.light_material = Material((1.1, 1.1, 1.1), (1, 1, 1), (1, 1, 1), 1)
 
     def get_node_colors(self):
         return [self.light_material]

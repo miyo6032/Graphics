@@ -361,14 +361,11 @@ class NetworkRenderer(Renderer):
         gl.glClearColor(0, 0, 0, 1.0);
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT);
 
-        shaders.glUseProgram(0)
-
         # Make the focused node bright
         if self.focused_node != None:
             self.prev_focused_material = self.nodes_renderer.colors[self.focused_node]
             self.nodes_renderer.colors[self.focused_node] = hl.Material((1, 1, 1), (1, 1, 1), (1, 1, 1), 1)
             name = self.highlighter.graph[self.focused_node]["name"] if hasattr(self.highlighter.graph[self.focused_node], "name") else "Node: " + str(self.focused_node)
-            self.glutPrint(name)
 
         self.nodes_renderer.render(tick, (0, 0, 0), light_pos, context)
 
@@ -379,9 +376,11 @@ class NetworkRenderer(Renderer):
 
         self.light_renderer.render(tick, light_pos, light_pos, context)
 
-        gl.glDisable(gl.GL_DEPTH_TEST)
-        self.crosshair_renderer.render(tick, light_pos, light_pos, context)
-        gl.glEnable(gl.GL_DEPTH_TEST)
+        # Only render crosshair for first person
+        if context.view_mode == 1:
+            gl.glDisable(gl.GL_DEPTH_TEST)
+            self.crosshair_renderer.render(tick, light_pos, light_pos, context)
+            gl.glEnable(gl.GL_DEPTH_TEST)
 
         # Second gaussian "ping pong" blur pass
 
@@ -415,6 +414,11 @@ class NetworkRenderer(Renderer):
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.blur_tex_buffers[0])
         self.renderScreenQuad(self.hdr_locations)
 
+        # Render node text if we need to
+        shaders.glUseProgram(0)
+        if self.focused_node != None:
+            self.glutPrint(name)
+
     # Helper function to render a screen quad across the viewport
     def renderScreenQuad(self, locations):
         self.quad_vbo.bind()
@@ -428,11 +432,29 @@ class NetworkRenderer(Renderer):
         gl.glDisableVertexAttribArray( locations["quad_pos"] )
         gl.glDisableVertexAttribArray( locations["tex_coord"] )
 
-    # Finds the node closest to the camera that intersects with the front vector, if any
+    # If the view mode is first person, the coordinates detected node is simply just the center
+    # of the screen, which is the camera front vector I already have stored
+    # For overhead perspective, it gets more complicated, but basically it convert the mouse window
+    # coordinates into world space using the glm unProject method
     def findFocusedNode(self, context, sphere_radius):
         max_focus_distance = 64
         x_1 = context.camera_pos
-        x_2 = (context.camera_front * 64) + context.camera_pos
+        if context.view_mode == 1:
+            x_2 = (context.camera_front * max_focus_distance) + context.camera_pos
+        else:
+            width = glut.glutGet(glut.GLUT_WINDOW_WIDTH)
+            height = glut.glutGet(glut.GLUT_WINDOW_HEIGHT)
+            viewport = glm.vec4(0, 0, width, height)
+
+            # The z value is apparently the z buffer depth. It seems to work fine when I give it a depth of 0.
+            window_coord = glm.vec3(context.mouse_pos[0], height - context.mouse_pos[1] - 1, 0)
+            
+            # Convert from window coordinates back to world coordinates
+            world_coord = glm.unProject(window_coord, context.view_mat, context.proj_mat, viewport)
+
+            # Convert world coordinates into a ray that goes in the direction of the mouse
+            x_2 = glm.normalize(world_coord - x_1) * max_focus_distance + context.camera_pos
+
         denominator = 1 / np.linalg.norm(x_2 - x_1)
         closest_node = None
         closest_distance = np.inf
@@ -513,6 +535,7 @@ class Context:
         self.highlighter = 0
         self.highlighters = highlighters
         self.renderer = NetworkRenderer(self.highlighters[self.highlighter], self.resolution)
+        self.mouse_pos = (0, 0)
 
     def reset_view(self):
         self.camera_pos = glm.vec3(0, 0, 3)
@@ -558,8 +581,6 @@ class Context:
         glut.glutMotionFunc(self.mouse_motion)
         glut.glutPassiveMotionFunc(self.mouse_motion)
         glut.glutMouseFunc(self.mouse)
-        if self.view_mode == 1:
-            glut.glutSetCursor(glut.GLUT_CURSOR_NONE)
 
     def mouse(self, button, state, x, y):
         if state == glut.GLUT_UP:
@@ -573,6 +594,8 @@ class Context:
         self.setup_view_proj()
 
     def mouse_motion(self, x, y):
+        self.mouse_pos = (x, y)
+
         if self.view_mode != 1:
             return
 
@@ -650,6 +673,10 @@ class Context:
             glut.glutPostRedisplay()
         elif key == b'v':
             self.view_mode = 0 if self.view_mode == 1 else 1
+            if self.view_mode == 1:
+                glut.glutSetCursor(glut.GLUT_CURSOR_NONE)
+            else:
+                glut.glutSetCursor(glut.GLUT_CURSOR_RIGHT_ARROW)
             self.reset_view()
             self.setup_view_proj()
             glut.glutPostRedisplay()

@@ -75,7 +75,7 @@ G_300 = nx.fast_gnp_random_graph(300, 3 / 300)
 g_di = nx.fast_gnp_random_graph(100, 3 / 100, directed=True) 
 
 path = Path(__file__).parent / "./data/karate.gml"
-Go     = nx.read_gml(path, label='id')
+Go     = nx.read_gml(str(path), label='id')
 G      = nx.convert_node_labels_to_integers(Go) # map node names to integers (0:n-1) [because indexing]
 
-vs.visualize(G, highlighters=[partition_highlighter(G), degree_vibrance_highlighter(g_di), triangle_highlighter(G_300), degree_vibrance_highlighter(G)], view_mode=1)
+vs.visualize(G, highlighters=[partition_highlighter(G), degree_vibrance_highlighter(g_di), triangle_highlighter(G_300), degree_vibrance_highlighter(G)], view_mode=0)
