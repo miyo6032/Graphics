@@ -470,7 +470,7 @@ class NetworkRenderer(Renderer):
             # Since multiple nodes would be within the line of sight, choose the one closest to the camera
             if distance < sphere_radius and distance_to_camera < closest_distance:
                 closest_node = node
-                clostest_distance = distance_to_camera
+                closest_distance = distance_to_camera
 
         return closest_node
 
