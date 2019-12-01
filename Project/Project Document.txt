@@ -26,6 +26,10 @@ Project Requirements
 
     Fog/cloud effect for partitions (I really want to try my hand at this) [Hard]
 
+    Try to separate partitions with the spring layout initial positions.
+
+    Transparency of nodes
+
     Place a test pyqt app on top maybe to genrate a UI [Hard]
         ONLY DO THIS IF WE HAVE EXTRA TIME
         View properties of nodes [Easy]

@@ -7,6 +7,7 @@ from OpenGL.GL import shaders
 import glm
 import numpy as np
 import highlighters as hl
+from pathlib import Path
 
 # CREDIT from these tutorials
 # https://www.labri.fr/perso/nrougier/python-opengl/#about-this-book
@@ -16,6 +17,7 @@ import highlighters as hl
 # https://learnopengl.com/Getting-started/OpenGL
 # https://en.wikibooks.org/wiki/OpenGL_Programming/Glescraft_4
 
+# From a previous homework: generates a sphere from an icosahedron
 class Icosphere():
     def icosahedron(self):
         X = 0.525731112119133606
@@ -69,6 +71,7 @@ class Icosphere():
             triangles = self.subdivide(vertices, triangles)
         return vertices, triangles
 
+# Base class that provides some functions for rendering
 class Renderer:
     def approxCos(self, angle):
         return np.cos(3.1415926/180*angle)
@@ -78,12 +81,12 @@ class Renderer:
 
     # Loads the shader from files attempts to compile them, and returns the shader program
     def read_shaders(self, vertex_file, fragment_file, geometry=None):
-        with open("./shaders/" + vertex_file, 'r') as file:
+        with open(Path(__file__).parent / "./shaders/" / vertex_file, 'r') as file:
             vertex_code = file.read()
-        with open("./shaders/" + fragment_file, 'r') as file:
+        with open(Path(__file__).parent / "./shaders/" / fragment_file, 'r') as file:
             fragment_code = file.read()
         if geometry:
-            with open("./shaders/" + geometry, 'r') as file:
+            with open(Path(__file__).parent / "./shaders/" / geometry, 'r') as file:
                 geometry_code = file.read()
 
         # Compile the shaders
@@ -126,6 +129,7 @@ class Renderer:
         pass
 
 # Pass in a flattened list of edges and it will render them all
+# The highlighter determines what colors ands styles the lines have
 class RenderLine(Renderer):
     def __init__(self):
         self.shader = self.read_shaders("network_line.vert", "bloom_line.frag", "striped_line.geom")
@@ -229,11 +233,9 @@ class RenderSpheres(Renderer):
             shaders.glUseProgram(0) # Go back to the legacy pipeline
 
 # In charge of rendering a spring representation of the network
-class SpringNetworkRenderer(Renderer):
+class NetworkRenderer(Renderer):
     def __init__(self, highlighter, aspect):
-        self.aspect = aspect
-
-        self.focused_node = None
+        self.focused_node = None # Will keep a reference of the node that the pointer is currently hovering over
 
         self.light_renderer = RenderSpheres(subdivisions=2)
         self.nodes_renderer = RenderSpheres(subdivisions=2)
@@ -268,6 +270,22 @@ class SpringNetworkRenderer(Renderer):
         [ 1, -1,  1, 0],
         [ 1,  1,  1, 1]
         ], 'f'))
+
+        self.setup_frame_buffer(aspect)
+
+        if gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER) != gl.GL_FRAMEBUFFER_COMPLETE:
+            print("Error: frame buffers have not been completed")
+            exit(0)
+
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+
+    # Because frame buffers are only as large as the resolution of the screen, they have to be updated whenever
+    # the screen gets resized, which is why this function is called to create new framebuffers in the reshape function
+    def setup_frame_buffer(self, aspect):
+        if hasattr(self, "frame_buffer"):
+            gl.glDeleteFramebuffers(1, [self.frame_buffer])
+
+        self.aspect = aspect
 
         # Setup frame buffer business for post processing
         self.frame_buffer = gl.glGenFramebuffers(1)
@@ -316,15 +334,9 @@ class SpringNetworkRenderer(Renderer):
             gl.glTexParameteri(gl.GL_TEXTURE_2D, gl.GL_TEXTURE_WRAP_T, gl.GL_CLAMP_TO_EDGE)
             gl.glFramebufferTexture2D(gl.GL_FRAMEBUFFER, gl.GL_COLOR_ATTACHMENT0, gl.GL_TEXTURE_2D, self.blur_tex_buffers[i], 0)
 
-        if gl.glCheckFramebufferStatus(gl.GL_FRAMEBUFFER) != gl.GL_FRAMEBUFFER_COMPLETE:
-            print("Error: frame buffers have not been completed")
-            exit(0)
-
-        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
-        # gl.glDeleteFramebuffers(1, [frame_buffer])
-
     def set_highlighter(self, highlighter):
         self.highlighter = highlighter
+        self.focused_node = None
         self.light_renderer.set_highlighter(hl.LightHighlighter())
         self.nodes_renderer.set_highlighter(highlighter)
         self.line_renderer.set_highlighter(highlighter)
@@ -355,7 +367,7 @@ class SpringNetworkRenderer(Renderer):
         if self.focused_node != None:
             self.prev_focused_material = self.nodes_renderer.colors[self.focused_node]
             self.nodes_renderer.colors[self.focused_node] = hl.Material((1, 1, 1), (1, 1, 1), (1, 1, 1), 1)
-            name = context.graph[self.focused_node]["name"] if hasattr(context.graph[self.focused_node], "name") else "Node: " + str(self.focused_node)
+            name = self.highlighter.graph[self.focused_node]["name"] if hasattr(self.highlighter.graph[self.focused_node], "name") else "Node: " + str(self.focused_node)
             self.glutPrint(name)
 
         self.nodes_renderer.render(tick, (0, 0, 0), light_pos, context)
@@ -433,6 +445,7 @@ class SpringNetworkRenderer(Renderer):
             distance_to_camera = glm.distance(x_0, x_1)
 
             # Since it is a sphere, the collision is if the distance to the line within the radius
+            # Since multiple nodes would be within the line of sight, choose the one closest to the camera
             if distance < sphere_radius and distance_to_camera < closest_distance:
                 closest_node = node
                 clostest_distance = distance_to_camera
@@ -485,26 +498,28 @@ class Crosshair(Renderer):
 
 class Context:
     def __init__(self, graph, highlighters, view_mode, resolution):
-        self.graph = graph
         self.tick = 0 # World ticks in milleseconds
-        self.angle = 0
-        self.elevation = 0
         self.fov = 55 # Field of view
         self.resolution = resolution
         self.overhead_view_distance = 5;
         self.aspect = self.resolution[0] / self.resolution[1]
         self.view_mode = view_mode # 0 for overhead and 1 for first person
-        self.camera_pos = glm.vec3(0, 0, 3)
-        self.camera_front = glm.vec3(0, 0, -1)
-        self.camera_up = glm.vec3(0, 1, 0)
         self.prev_frame_time = 0
         self.delta_time = 0
+        self.reset_view()
         self.init_glut()
         self.setup_view_proj()
         self.warp = False; # To keep the motion function from being called after we warp the mouse pointer
         self.highlighter = 0
-        self.renderer = SpringNetworkRenderer(highlighters[self.highlighter], self.resolution)
         self.highlighters = highlighters
+        self.renderer = NetworkRenderer(self.highlighters[self.highlighter], self.resolution)
+
+    def reset_view(self):
+        self.camera_pos = glm.vec3(0, 0, 3)
+        self.camera_front = glm.vec3(0, 0, -1)
+        self.camera_up = glm.vec3(0, 1, 0)
+        self.angle = 0
+        self.elevation = 0
 
     def setup_view_proj(self):
         if self.view_mode == 0:
@@ -621,14 +636,21 @@ class Context:
 
     def reshape(self, width, height):
         self.aspect = width / height if height > 0 else 1
+        self.resolution = [width, height]
+        self.renderer.setup_frame_buffer(self.resolution)
         self.setup_view_proj()
 
     def keyboard(self, key, x, y):
         if key == b'\x1b':
             sys.exit()
-        elif key == 'n':
+        elif key == b'n':
             self.highlighter = (self.highlighter + 1) % len(self.highlighters)
             self.renderer.set_highlighter(self.highlighters[self.highlighter])
+            glut.glutPostRedisplay()
+        elif key == b'v':
+            self.view_mode = 0 if self.view_mode == 1 else 1
+            self.reset_view()
+            self.setup_view_proj()
             glut.glutPostRedisplay()
 
     def idle(self):
@@ -642,7 +664,9 @@ def visualize(network, highlighters=None, view_mode=1, resolution=(1280, 720)):
     if highlighters == None:
         highlighters = [hl.Highlighter(network)]
 
-    elif not highlighters is list:
+    try:
+        highlighters = [highlighter for highlighter in highlighters]
+    except TypeError as te:
         highlighters = [highlighters]
 
     Context(network, highlighters, view_mode, resolution)

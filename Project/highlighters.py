@@ -1,7 +1,6 @@
 import numpy as np
 import networkx as nx
 import colorsys
-import partition
 import math
 
 class Material():
@@ -63,29 +62,10 @@ class LightHighlighter(Highlighter):
     def __init__(self):
         graph = nx.fast_gnp_random_graph(1, 0)
         super().__init__(graph)
-        self.light_material = Material((2, 2, 2), (1, 1, 1), (1, 1, 1), 1)
+        self.light_material = Material((1.1, 1.1, 0.5), (1, 1, 1), (1, 1, 1), 1)
 
     def get_node_colors(self):
         return [self.light_material]
 
     def get_light_color(self):
         return self.light_material
-
-# Creates a partition based on max likelihoods and render that in nodes
-class PartitionHighlighter(Highlighter):
-    def __init__(self, graph):
-        super().__init__(graph)
-        z = partition.get_partition_n(graph, c = 2, trials = 5)
-        max_degree = 1 / max(z)
-        hue = lambda group : (group * max_degree) * 0.7 # Make it less than 1 so we don't get red values for max and min
-        self.node_colors = [Material(
-                colorsys.hsv_to_rgb(hue(group), 0.5, 1), 
-                colorsys.hsv_to_rgb(hue(group), 0.5, 1),
-            (0.5, 0.5, 0.5), 32) for group in z]
-        self.edge_colors = [(*colorsys.hsv_to_rgb(hue(z[node]), 0.5, 1), 0.5) for edge in graph.edges for node in edge]
-
-    def get_edge_colors(self):
-        return self.edge_colors
-
-    def get_node_colors(self):
-        return self.node_colors

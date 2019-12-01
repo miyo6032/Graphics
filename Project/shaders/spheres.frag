@@ -1,6 +1,6 @@
 #version 330
-layout (location = 0) out vec4 FragColor;
-layout (location = 1) out vec4 BrightColor;  
+layout (location = 0) out vec4 FragColor; // This is sent to the first frame buffer that will go directly to the third pass
+layout (location = 1) out vec4 BrightColor;  // This will be sent to the second frame buffer for the blur effect
 
 struct Material {
     vec3 ambient;

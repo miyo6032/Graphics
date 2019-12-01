@@ -2,6 +2,8 @@ import visualizer as vs
 import networkx as nx
 import highlighters as hl
 import colorsys
+import partition
+from pathlib import Path
 
 def degree_vibrance_highlighter(G):
     """Sets node colors and edges to be brighter the higher degree they have. Singletons are black."""
@@ -53,10 +55,27 @@ def triangle_highlighter(G):
     highlighter.set_edge_colors(edge_colors)
     return highlighter
 
-G = nx.fast_gnp_random_graph(300, 3 / 300)
+# Creates a partition based on max likelihoods and render that in nodes
+def partition_highlighter(G):
+    highlighter = hl.Highlighter(G)
+    z = partition.get_partition_n(G, c = 2, trials = 5)
+    max_degree = 1 / max(z)
+    hue = lambda group : (group * max_degree) * 0.7 # Make it less than 1 so we don't get red values for max and min
+    node_colors = [hl.Material(
+                colorsys.hsv_to_rgb(hue(group), 1, 1), 
+                colorsys.hsv_to_rgb(hue(group), 1, 1),
+            (0.5, 0.5, 0.5), 32) for group in z]
+    edge_colors = [(*colorsys.hsv_to_rgb(hue(z[node]), 1, 1), 0.5) for edge in G.edges for node in edge]
+    highlighter.set_node_colors(node_colors)
+    highlighter.set_edge_colors(edge_colors)
+    return highlighter
 
-# fname1 = 'data/karate.gml'
-# Go     = nx.read_gml('./' + fname1, label='id')
-# G      = nx.convert_node_labels_to_integers(Go) # map node names to integers (0:n-1) [because indexing]
+G_300 = nx.fast_gnp_random_graph(300, 3 / 300)
 
-vs.visualize(G, highlighters=triangle_highlighter(G), view_mode=1)
+g_di = nx.fast_gnp_random_graph(100, 3 / 100, directed=True) 
+
+path = Path(__file__).parent / "./data/karate.gml"
+Go     = nx.read_gml(path, label='id')
+G      = nx.convert_node_labels_to_integers(Go) # map node names to integers (0:n-1) [because indexing]
+
+vs.visualize(G, highlighters=[partition_highlighter(G), degree_vibrance_highlighter(g_di), triangle_highlighter(G_300), degree_vibrance_highlighter(G)], view_mode=1)
