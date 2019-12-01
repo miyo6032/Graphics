@@ -81,12 +81,12 @@ class Renderer:
 
     # Loads the shader from files attempts to compile them, and returns the shader program
     def read_shaders(self, vertex_file, fragment_file, geometry=None):
-        with open(Path(__file__).parent / "./shaders/" / vertex_file, 'r') as file:
+        with (Path(__file__).parent / "./shaders/" / vertex_file).open()  as file:
             vertex_code = file.read()
-        with open(Path(__file__).parent / "./shaders/" / fragment_file, 'r') as file:
+        with (Path(__file__).parent / "./shaders/" / fragment_file).open()  as file:
             fragment_code = file.read()
         if geometry:
-            with open(Path(__file__).parent / "./shaders/" / geometry, 'r') as file:
+            with (Path(__file__).parent / "./shaders/" / geometry).open() as file:
                 geometry_code = file.read()
 
         # Compile the shaders
@@ -642,7 +642,8 @@ class Context:
 
     def keyboard(self, key, x, y):
         if key == b'\x1b':
-            sys.exit()
+            glut.glutLeaveMainLoop() # I use this because exiting throws exceptions
+
         elif key == b'n':
             self.highlighter = (self.highlighter + 1) % len(self.highlighters)
             self.renderer.set_highlighter(self.highlighters[self.highlighter])
