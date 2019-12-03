@@ -16,6 +16,7 @@ from pathlib import Path
 # https://schneide.blog/2016/07/15/generating-an-icosphere-in-c/
 # https://learnopengl.com/Getting-started/OpenGL
 # https://en.wikibooks.org/wiki/OpenGL_Programming/Glescraft_4
+# https://en.wikibooks.org/wiki/OpenGL_Programming/Object_selection
 
 # From a previous homework: generates a sphere from an icosahedron
 class Icosphere():
@@ -376,12 +377,6 @@ class NetworkRenderer(Renderer):
 
         self.light_renderer.render(tick, light_pos, light_pos, context)
 
-        # Only render crosshair for first person
-        if context.view_mode == 1:
-            gl.glDisable(gl.GL_DEPTH_TEST)
-            self.crosshair_renderer.render(tick, light_pos, light_pos, context)
-            gl.glEnable(gl.GL_DEPTH_TEST)
-
         # Second gaussian "ping pong" blur pass
 
         # Make sure we use the first texture (because we are using more than one texture)
@@ -413,6 +408,12 @@ class NetworkRenderer(Renderer):
         gl.glActiveTexture(gl.GL_TEXTURE1)
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.blur_tex_buffers[0])
         self.renderScreenQuad(self.hdr_locations)
+
+        # Only render crosshair for first person
+        if context.view_mode == 1:
+            gl.glDisable(gl.GL_DEPTH_TEST)
+            self.crosshair_renderer.render(tick, light_pos, light_pos, context)
+            gl.glEnable(gl.GL_DEPTH_TEST)
 
         # Render node text if we need to
         shaders.glUseProgram(0)
