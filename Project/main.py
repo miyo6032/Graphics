@@ -6,6 +6,7 @@ import partition
 from pathlib import Path
 import functools
 import random as rand
+import numpy as np
 
 def neon_highlighter(G):
     """Displays nodes as bright blue and edges as white"""
@@ -19,7 +20,7 @@ def neon_highlighter(G):
             (1, 1, 10), 
             1) for degree in degrees]
 
-    edge_colors = [(1, 1, 1, 0.5) for edge in G.edges for node in edge]
+    edge_colors = [(0.8, 0.8, 0.8, 0.5) for edge in G.edges for node in edge]
     highlighter.set_node_colors(node_colors)
     highlighter.set_edge_colors(edge_colors)
     highlighter.set_light_color(hl.Material((5, 5, 5), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0)) # Makes the nodes neon
@@ -122,9 +123,9 @@ def partition_highlighter(G, partition_filename, c = 2):
 def partition_layout_adjusted(G, partition_filename):
     highlighter = partition_highlighter(G, partition_filename)
     z = get_partition(G, partition_filename)
-    group_0 = [rand.random() + 0.1 for i in range(3)]
-    group_1 = [rand.random() - 0.1 for i in range(3)]
-    pos = {node : group_1 if z[node] == 1 else group_0 for node in G}
+    group_0 = lambda : [rand.random() * 0.01 + 0.1 for i in range(3)]
+    group_1 = lambda : [rand.random() * 0.01 - 0.1 for i in range(3)]
+    pos = {node : group_1() if z[node] == 1 else group_0() for node in G}
     highlighter.layout = nx.spring_layout(G, dim=3, scale=9, pos=pos)
     return highlighter
 
@@ -165,4 +166,5 @@ vs.visualize(highlighters=[
     degree_vibrance_highlighter(g_karate, use_hue=True), 
     triangle_highlighter(g_karate), 
     triangle_highlighter(g_metabolism, feed_back_loop=True), 
-    triangle_highlighter(metabolism_null, feed_back_loop=True)], view_mode=0)
+    triangle_highlighter(metabolism_null, feed_back_loop=True)
+    ], view_mode=0)

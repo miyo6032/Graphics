@@ -337,6 +337,8 @@ class NetworkRenderer(Renderer):
 
     def set_highlighter(self, highlighter):
         self.highlighter = highlighter
+        if self.focused_node != None:
+            self.nodes_renderer.colors[self.focused_node] = self.prev_focused_material
         self.focused_node = None
         self.nodes_renderer.set_highlighter(highlighter)
         self.line_renderer.set_highlighter(highlighter)
