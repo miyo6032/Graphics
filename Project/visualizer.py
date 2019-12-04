@@ -338,13 +338,12 @@ class NetworkRenderer(Renderer):
     def set_highlighter(self, highlighter):
         self.highlighter = highlighter
         self.focused_node = None
-        self.light_renderer.set_highlighter(hl.LightHighlighter())
         self.nodes_renderer.set_highlighter(highlighter)
         self.line_renderer.set_highlighter(highlighter)
 
     def render(self, tick, offset, light_pos, context):
         degree = np.round((tick * 0.1)) % 360;
-        light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
+        light_pos = (10, 10, 10)
 
         # Reset the previously focused node back to its original color
         if self.focused_node != None:
@@ -366,7 +365,6 @@ class NetworkRenderer(Renderer):
         if self.focused_node != None:
             self.prev_focused_material = self.nodes_renderer.colors[self.focused_node]
             self.nodes_renderer.colors[self.focused_node] = hl.Material((1, 1, 1), (1, 1, 1), (1, 1, 1), 1)
-            name = self.highlighter.graph[self.focused_node]["name"] if hasattr(self.highlighter.graph[self.focused_node], "name") else "Node: " + str(self.focused_node)
 
         self.nodes_renderer.render(tick, (0, 0, 0), light_pos, context)
 
@@ -374,8 +372,6 @@ class NetworkRenderer(Renderer):
         gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA);  
         self.line_renderer.render(tick, (0, 0, 0), light_pos, context)
         gl.glDisable(gl.GL_BLEND);
-
-        self.light_renderer.render(tick, light_pos, light_pos, context)
 
         # Second gaussian "ping pong" blur pass
 
@@ -418,7 +414,7 @@ class NetworkRenderer(Renderer):
         # Render node text if we need to
         shaders.glUseProgram(0)
         if self.focused_node != None:
-            self.glutPrint(name)
+            self.glutPrint(self.highlighter.print_node(self.focused_node), pos=(5, 25))
 
     # Helper function to render a screen quad across the viewport
     def renderScreenQuad(self, locations):
@@ -476,10 +472,10 @@ class NetworkRenderer(Renderer):
         return closest_node
 
     # Print some text to opengl
-    def glutPrint(self, string):
+    def glutPrint(self, string, pos=(5, 5)):
         gl.glLoadIdentity()
         gl.glColor3f(1,1,1)
-        gl.glWindowPos2i(5,5)
+        gl.glWindowPos2i(*pos)
 
         for ch in string:
             glut.glutBitmapCharacter(glut.GLUT_BITMAP_HELVETICA_18, ord(ch))
@@ -520,7 +516,7 @@ class Crosshair(Renderer):
             shaders.glUseProgram(0) # Go back to the legacy pipeline
 
 class Context:
-    def __init__(self, graph, highlighters, view_mode, resolution):
+    def __init__(self, highlighters, view_mode, resolution):
         self.tick = 0 # World ticks in milleseconds
         self.fov = 55 # Field of view
         self.resolution = resolution
@@ -672,6 +668,10 @@ class Context:
             self.highlighter = (self.highlighter + 1) % len(self.highlighters)
             self.renderer.set_highlighter(self.highlighters[self.highlighter])
             glut.glutPostRedisplay()
+        elif key == b'b':
+            self.highlighter = (self.highlighter - 1) % len(self.highlighters)
+            self.renderer.set_highlighter(self.highlighters[self.highlighter])
+            glut.glutPostRedisplay()
         elif key == b'v':
             self.view_mode = 0 if self.view_mode == 1 else 1
             if self.view_mode == 1:
@@ -687,16 +687,17 @@ class Context:
         self.delta_time = self.tick - self.prev_frame_time
         self.prev_frame_time = self.tick
 
-def visualize(network, highlighters=None, view_mode=1, resolution=(1280, 720)):
+def visualize(highlighters=None, view_mode=1, resolution=(1280, 720)):
     """Generates an opengl window that renders the given network"""
 
     if highlighters == None:
-        highlighters = [hl.Highlighter(network)]
+        print("No highlighter specified: nothing to show")
+        return
 
     try:
         highlighters = [highlighter for highlighter in highlighters]
     except TypeError as te:
         highlighters = [highlighters]
 
-    Context(network, highlighters, view_mode, resolution)
+    Context(highlighters, view_mode, resolution)
     glut.glutMainLoop()
