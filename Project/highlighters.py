@@ -3,6 +3,7 @@ import networkx as nx
 import colorsys
 import math
 
+# This defines the way the surface will interact with lighting in a fine grain manner
 class Material():
     def __init__(self, ambient, diffuse, specular, shininess):
         self.ambient = ambient

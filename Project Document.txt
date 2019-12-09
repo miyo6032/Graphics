@@ -24,13 +24,13 @@ Project Requirements
 
 |||||||||||||||||||||||||||||||||||||||||||||||||| Finish ^ by 11/25
 
-    Fog/cloud effect for partitions (I really want to try my hand at this) [Hard]
+    [NOT PLANNED] Fog/cloud effect for partitions (I really want to try my hand at this) [Hard]
 
-    Try to separate partitions with the spring layout initial positions.
+    [DONE] Try to separate partitions with the spring layout initial positions.
 
-    Transparency of nodes
+    [NOT PLANNED] Transparency of nodes
 
-    Place a test pyqt app on top maybe to genrate a UI [Hard]
+    [NOT PLANNED] Place a test pyqt app on top maybe to genrate a UI [Hard]
         ONLY DO THIS IF WE HAVE EXTRA TIME
         View properties of nodes [Easy]
 
@@ -39,6 +39,9 @@ Project Requirements
     Creating the presentation I guess [Requires a finding examples to analyze] [Easy]
 
     Final project adjustments
+        Edge Selection
+        More Layouts
+        More Default Algorithms
 
     Write the paper 
 

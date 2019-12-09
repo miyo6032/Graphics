@@ -18,7 +18,8 @@ from pathlib import Path
 # https://en.wikibooks.org/wiki/OpenGL_Programming/Glescraft_4
 # https://en.wikibooks.org/wiki/OpenGL_Programming/Object_selection
 
-# From a previous homework: generates a sphere from an icosahedron
+# From a previous homework: generates a sphere from an icosahedron by subdividing the triangles
+# into a sphere shape
 class Icosphere():
     def icosahedron(self):
         X = 0.525731112119133606
@@ -174,7 +175,8 @@ class RenderLine(Renderer):
         finally:
             shaders.glUseProgram(0) # Go back to the legacy pipeline
 
-# Renders n spheres at given positions
+# Renders n spheres at given positions (the positions are specified by the highlighter)
+# This is the only object that uses the material system and blinn-phong lighting
 class RenderSpheres(Renderer):
     def __init__(self, subdivisions = 1):
         self.shader = self.read_shaders("spheres.vert", "spheres.frag")
@@ -224,6 +226,7 @@ class RenderSpheres(Renderer):
                 gl.glUniform3f( self.locations['material.specular'], *material.specular )
                 gl.glUniform1f( self.locations['material.shininess'], material.shininess )
 
+                # Use the model matrix to offset each sphere into world coordinates on the gpu
                 model_mat = glm.translate(glm.mat4(1), glm.vec3(*offset) + glm.vec3(*position))
                 gl.glUniformMatrix4fv( self.locations['model_mat'], 1, gl.GL_FALSE, glm.value_ptr(model_mat))
                 
@@ -234,6 +237,8 @@ class RenderSpheres(Renderer):
             shaders.glUseProgram(0) # Go back to the legacy pipeline
 
 # In charge of rendering a spring representation of the network
+# This is the main render, and holds all of the different passes and the
+# smaller components like the nodes, edges, and the renderer for the light as well.
 class NetworkRenderer(Renderer):
     def __init__(self, highlighter, aspect):
         self.focused_node = None # Will keep a reference of the node that the pointer is currently hovering over
@@ -325,6 +330,8 @@ class NetworkRenderer(Renderer):
         gl.glEnable(gl.GL_DEPTH_TEST)
 
         # Create two framebuffers to create the blur effect that will bounce back and forth
+        # The bouncing is because doing a 2D gaussian blur is more efficient if we only do 
+        # a single dimension first.
         for i in range(2):
             gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, self.blur_frame_buffers[i])
             gl.glBindTexture(gl.GL_TEXTURE_2D, self.blur_tex_buffers[i])
@@ -342,20 +349,20 @@ class NetworkRenderer(Renderer):
         self.focused_node = None
         self.nodes_renderer.set_highlighter(highlighter)
         self.line_renderer.set_highlighter(highlighter)
+        self.light_renderer.set_highlighter(hl.LightHighlighter())
 
     def render(self, tick, offset, light_pos, context):
-        degree = np.round((tick * 0.1)) % 360;
-        light_pos = (10, 10, 10)
-
         # Reset the previously focused node back to its original color
         if self.focused_node != None:
             self.nodes_renderer.colors[self.focused_node] = self.prev_focused_material
 
         self.focused_node = self.findFocusedNode(context, self.highlighter.get_node_radius())
 
+        #
         # First pass (the normal render)
+        #
 
-        # Resise viewport to match the framebuffer size
+        # Resize viewport to match the framebuffer size
         gl.glViewport(0, 0, *self.aspect)
 
         # Bind the hdr framebuffer (which is the one that contains two color buffers)
@@ -375,9 +382,14 @@ class NetworkRenderer(Renderer):
         self.line_renderer.render(tick, (0, 0, 0), light_pos, context)
         gl.glDisable(gl.GL_BLEND);
 
-        # Second gaussian "ping pong" blur pass
+        # Render the light
+        self.light_renderer.render(tick, light_pos, light_pos, context)
 
-        # Make sure we use the first texture (because we are using more than one texture)
+        #
+        # Second gaussian "ping pong" blur pass
+        #
+
+        # Make sure we use the first texture (because we will be using more than one texture in the third pass)
         gl.glActiveTexture(gl.GL_TEXTURE0);
         shaders.glUseProgram(self.blur_shaders)
 
@@ -389,18 +401,17 @@ class NetworkRenderer(Renderer):
             gl.glBindTexture(gl.GL_TEXTURE_2D, self.color_buffers[1] if i == 0 else self.blur_tex_buffers[(i + 1) % 2])
             self.renderScreenQuad(self.blur_locations)
 
-        # Back to normal viewport
-        gl.glViewport(0, 0, glut.glutGet(glut.GLUT_WINDOW_WIDTH), glut.glutGet(glut.GLUT_WINDOW_HEIGHT) )
-
+        #
         # Third HDR tonemapping pass
+        #
 
-        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0)
+        gl.glBindFramebuffer(gl.GL_FRAMEBUFFER, 0) # No longer capture output in framebuffer
         gl.glClearColor(1.0, 1.0, 1.0, 1.0);
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT);
         shaders.glUseProgram(self.screen_shaders)
         gl.glUniform1f(self.hdr_locations["exposure"], 1)
 
-        # Combine the normal buffer and the blurred buffer into one output
+        # Combine the buffer from the first pass and the blurred buffer into one output
         gl.glActiveTexture(gl.GL_TEXTURE0)
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.color_buffers[0])
         gl.glActiveTexture(gl.GL_TEXTURE1)
@@ -535,6 +546,7 @@ class Context:
         self.highlighters = highlighters
         self.renderer = NetworkRenderer(self.highlighters[self.highlighter], self.resolution)
         self.mouse_pos = (0, 0)
+        self.move_light = False # Option to have a moving test light
 
     def reset_view(self):
         self.camera_pos = glm.vec3(0, 0, 3)
@@ -543,6 +555,7 @@ class Context:
         self.angle = 0
         self.elevation = 0
 
+    # Get the view and projection matrices using glm, but otherwise it is pretty much the same as in class
     def setup_view_proj(self):
         if self.view_mode == 0:
             Ex = -2*self.overhead_view_distance*self.approxSin(self.angle)*self.approxCos(self.elevation);
@@ -585,6 +598,7 @@ class Context:
         if state == glut.GLUT_UP:
             return
 
+        # Scrolling input
         if button == 3:
             self.fov = np.clip(self.fov + 1, 30, 90)
         elif button == 4:
@@ -598,6 +612,7 @@ class Context:
         if self.view_mode != 1:
             return
 
+        # Wnenever we warp the pointer, this callback is called again, and we don't want to do anything that time
         if not self.warp:
             x_center = glut.glutGet(glut.GLUT_WINDOW_WIDTH) / 2
             y_center = glut.glutGet(glut.GLUT_WINDOW_HEIGHT) / 2
@@ -646,7 +661,13 @@ class Context:
         self.setup_view_proj()
 
     def display(self):
-        self.renderer.render(self.tick, (0, 0, 0), None, self)
+        if self.move_light:
+            degree = np.round((self.tick * 0.1)) % 360;
+            light_pos = (self.approxCos(degree) * 2, self.approxSin(degree) * 2, 1)
+        else:
+            light_pos = (10, 10, 10)
+
+        self.renderer.render(self.tick, (0, 0, 0), light_pos, self)
 
         err = gl.glGetError()
         if err != gl.GL_NO_ERROR:
@@ -683,6 +704,8 @@ class Context:
             self.reset_view()
             self.setup_view_proj()
             glut.glutPostRedisplay()
+        elif key == b'l':
+            self.move_light = not self.move_light
 
     def idle(self):
         self.tick = glut.glutGet(glut.GLUT_ELAPSED_TIME);

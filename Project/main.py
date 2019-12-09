@@ -34,14 +34,15 @@ def degree_vibrance_highlighter(G, use_hue=False):
     max_degree = 1 / max(degrees)
     hue = lambda degree : (degree * max_degree) * 0.7 # Make it less than 1 so we don't get red values for max and min
     node_colors = [hl.Material(
-            colorsys.hsv_to_rgb(hue(degree) if use_hue else 0, 1, degree * max_degree), 
-            colorsys.hsv_to_rgb(hue(degree) if use_hue else 0, 1, degree * max_degree),
-            colorsys.hsv_to_rgb(0, 0.0, degree * max_degree), 
-            32) for degree in degrees]
+            colorsys.hsv_to_rgb(hue(degree) if use_hue else 0, 1, 1), 
+            colorsys.hsv_to_rgb(hue(degree) if use_hue else 0, 1, 1),
+            colorsys.hsv_to_rgb(0, 0.0, 1), 
+            1) for degree in degrees]
 
     edge_colors = [(*node_colors[node].ambient, 0.5) for edge in G.edges for node in edge]
     highlighter.set_node_colors(node_colors)
     highlighter.set_edge_colors(edge_colors)
+    highlighter.set_light_color(hl.Material((15, 15, 15), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 0))
     return highlighter
 
 # Will highlight all triangles, or feed foward loops
@@ -145,7 +146,7 @@ G_300 = nx.fast_gnp_random_graph(300, 3 / 300)
 
 block_nodes = [10, 15, 10, 15]
 
-# Create a tiered structure
+# Create an ordered structure
 block_matrix = [
     [10 / block_nodes[0], 5 / block_nodes[0], 1 / block_nodes[0], 0],
     [5 / block_nodes[0], 10 / block_nodes[1], 5 / block_nodes[1], 1 / block_nodes[1]],
@@ -161,10 +162,8 @@ vs.visualize(highlighters=[
     triangle_highlighter(G_300), 
     partition_highlighter(g_karate, "karate_partition"),
     partition_highlighter(block_model, "block_partition", c=4),
-    partition_highlighter(g_metabolism, "metabolism_partition"), 
     partition_layout_adjusted(g_metabolism, "metabolism_partition"), 
     degree_vibrance_highlighter(g_karate, use_hue=True), 
     triangle_highlighter(g_karate), 
-    triangle_highlighter(g_metabolism, feed_back_loop=True), 
     triangle_highlighter(metabolism_null, feed_back_loop=True)
     ], view_mode=0)
