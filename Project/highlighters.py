@@ -22,6 +22,8 @@ class Highlighter():
         self.node_colors=[Material(colorsys.hsv_to_rgb(np.random.rand(), 1, 1), colorsys.hsv_to_rgb(np.random.rand(), 1, 1), (0.5, 0.5, 0.5), 32) for node in graph.nodes()]
         self.edge_colors=[(0.5, 0.5, 0.5, 0.5) for edge in graph.edges for node in edge]
         self.light_color = Material((0.2, 0.2, 0.2), (0.5, 0.5, 0.5), (1.0, 1.0, 1.0), 0)
+        self.name=""
+        self.node_radius = 0.05
         
         def print_name_degree(focused_node):
             name = self.graph[focused_node]["name"] if hasattr(self.graph[focused_node], "name") else "Node: " + str(focused_node)
@@ -33,6 +35,10 @@ class Highlighter():
             return name + ", " + degrees
 
         self.text_func = print_name_degree
+
+    def tick(self, tick):
+        """ Called every update to handle real time network changes"""
+        pass
 
     def set_node_colors(self, node_colors):
         """Accepts an array of Materials that correspond to the colors of each node in the network"""
@@ -54,7 +60,10 @@ class Highlighter():
         return self.graph.edges()
 
     def get_node_radius(self):
-        return 0.05
+        return self.node_radius
+
+    def set_node_radius(self, radius):
+        self.node_radius = radius
 
     def get_layout(self):
         return self.layout

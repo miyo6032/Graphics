@@ -40,7 +40,7 @@ void main() {
         vec3 position = gl_in[0].gl_Position.xyz + offset;
 
         // This alternates the colors in an animated fashion.
-        // The ends are particularly tricky to make sure they don't go thought the node to the other side
+        // The ends are particularly tricky to make sure they don't go though the node to the other side
         gl_Position = proj_mat * view_mat * gl_in[0].gl_Position;
         frag_line_color = geometry_in[0].color;
         EmitVertex();
@@ -52,6 +52,7 @@ void main() {
         frag_line_color = geometry_in[0].color;
         EmitVertex();
 
+        // Render the inner segments of the line
         for(int i = 0; i < 9; i++)
         {
             gl_Position = proj_mat * view_mat * vec4(position, 1.0);
@@ -67,6 +68,7 @@ void main() {
 
         position += end_offset - increment;
 
+        // Render the final outer segment of the line
         gl_Position = proj_mat * view_mat * vec4(position, 1.0);
         frag_line_color = vec4(0);
         EmitVertex();

@@ -352,6 +352,7 @@ class NetworkRenderer(Renderer):
         self.light_renderer.set_highlighter(hl.LightHighlighter())
 
     def render(self, tick, offset, light_pos, context):
+
         # Reset the previously focused node back to its original color
         if self.focused_node != None:
             self.nodes_renderer.colors[self.focused_node] = self.prev_focused_material
@@ -429,6 +430,8 @@ class NetworkRenderer(Renderer):
         if self.focused_node != None:
             self.glutPrint(self.highlighter.print_node(self.focused_node), pos=(5, 25))
 
+        self.glutPrint(self.highlighter.name, pos=(5, 45))
+
     # Helper function to render a screen quad across the viewport
     def renderScreenQuad(self, locations):
         self.quad_vbo.bind()
@@ -476,8 +479,8 @@ class NetworkRenderer(Renderer):
             distance = np.linalg.norm(glm.cross(x_0 - x_1, x_0 - x_2)) * denominator
             distance_to_camera = glm.distance(x_0, x_1)
 
-            # Since it is a sphere, the collision is if the distance to the line within the radius
-            # Since multiple nodes would be within the line of sight, choose the one closest to the camera
+            # Since it is a sphere, the collision is if the distance to the line is within the radius
+            # Since multiple nodes could be within the line of sight, choose the one closest to the camera
             if distance < sphere_radius and distance_to_camera < closest_distance:
                 closest_node = node
                 closest_distance = distance_to_camera
@@ -572,7 +575,7 @@ class Context:
             self.camera_front = glm.normalize(self.camera_front)
             self.view_mat = glm.lookAt(self.camera_pos, self.camera_pos + self.camera_front, self.camera_up)
 
-        self.proj_mat = glm.perspective(glm.radians(self.fov), self.aspect, 0.25, 64);
+        self.proj_mat = glm.perspective(glm.radians(self.fov), self.aspect, 1, 256)
 
     def approxCos(self, angle):
         return np.cos(3.1415926/180*angle)
@@ -583,7 +586,7 @@ class Context:
     def init_glut(self):
         glut.glutInit() # Creates the opengl context
         glut.glutInitDisplayMode(glut.GLUT_DOUBLE | glut.GLUT_RGBA | glut.GLUT_DEPTH)
-        glut.glutCreateWindow('3D Network Visualizer')
+        glut.glutCreateWindow('3D Network Visualizer Michael Yoshimura')
         glut.glutReshapeWindow(*self.resolution)
         glut.glutReshapeFunc(self.reshape)
         glut.glutDisplayFunc(self.display)
@@ -600,9 +603,9 @@ class Context:
 
         # Scrolling input
         if button == 3:
-            self.fov = np.clip(self.fov + 1, 30, 90)
+            self.fov = np.clip(self.fov + 1, 15, 120)
         elif button == 4:
-            self.fov = np.clip(self.fov - 1, 30, 90)
+            self.fov = np.clip(self.fov - 1, 15, 120)
 
         self.setup_view_proj()
 

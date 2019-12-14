@@ -3,6 +3,7 @@
 in vec3 vertex_position;
 in vec4 line_color;
 in float edge_strength; // 0 for if the line is directed, 1 if the line is strongly connected aka connected from both sides or undirected
+// Graphically, this just means 0 for an animated line, and 1 for a regular line
 
 uniform mat4 model_mat;
 
